@@ -237,7 +237,7 @@ public:
     void    getEstimatedPictureCost(Frame *pic);
     void    setLookaheadQueue();
     int     findSliceType(int poc);
-    bool    generatemcstf(Frame * frame, PicList refPic, int poclast);
+    bool    generatemcstf(Frame* frameEnc, PicList refPic, int poclast);
     bool    isFilterThisframe(uint8_t sliceTypeConfig, int curSliceType);
     int32_t estimateNoise(Frame* curFrame);
 

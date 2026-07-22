@@ -2267,8 +2267,8 @@ void Lookahead::slicetypeDecide()
             /* Stamp the per-frame flag so frameencoder reads a race-free value */
             frameEnc->m_lowres.filterThisGOP = m_filterThisGOP;
 
-            if (frameEnc->m_lowres.filterThisGOP && isFilterThisframe(frameEnc->m_mcstf->m_sliceTypeConfig, frameEnc->m_lowres.sliceType))
-            {
+            if (frameEnc->m_lowres.filterThisGOP && frameEnc->m_poc % 8 == 0 && frameEnc->m_mcstf->m_numRef == 0 && frameEnc->m_lowres.sliceType != X265_TYPE_AUTO)
+            {   
                 if (!generatemcstf(frameEnc, m_origPicBuf->m_mcstfPicList, m_inputQueue.last()->m_poc))
                 {
                     x265_log(m_param, X265_LOG_ERROR, "Failed to initialize MCSTFReferencePicInfo at POC %d\n", frameEnc->m_poc);
@@ -4214,7 +4214,7 @@ void CostEstimateGroup::processTasks(int workerThreadID)
             ProfileScopeEvent(estCostSingle);
             Estimate& e = m_estimates[i];
             Frame* curFrame = e.frame;
-            if (m_lookahead.m_param->bEnableTemporalFilter && curFrame && m_lookahead.isFilterThisframe(curFrame->m_mcstf->m_sliceTypeConfig, curFrame->m_lowres.sliceType))
+            if (m_lookahead.m_param->bEnableTemporalFilter && curFrame  && curFrame->m_poc % 8 == 0 && curFrame->m_lowres.sliceType != X265_TYPE_AUTO)
             {
                 ProfileLookaheadTime(tld.mcstfBatchElapsedTime);
                 MotionEstimatorTLD& m_metld = m_lookahead.m_metld[id];

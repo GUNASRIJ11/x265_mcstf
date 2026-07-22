@@ -1,0 +1,68 @@
+diff a/source/common/temporalfilter.cpp b/source/common/temporalfilter.cpp	(rejected hunks)
+@@ -577,57 +711,32 @@ void TemporalFilter::bilateralFilter(Frame* frame,
+                             correctedPicsStride = refPicInfo->compensatedPic->m_strideC;
+ 
+                         const intptr_t pelOffset = y * correctedPicsStride + x;
+-                        // primitives.pu[1].copy_pp(m_metld->me.fencPUYuv.m_buf[0], FENC_STRIDE, refPicInfo->compensatedPic->m_picOrg[c] + pelOffset, correctedPicsStride);
++                        primitives.pu[1].copy_pp(m_metld->me.fencPUYuv.m_buf[0], FENC_STRIDE, refPicInfo->compensatedPic->m_picOrg[c] + pelOffset, correctedPicsStride);
+ 
+                         double variance = 0, diffsum = 0;
+-                        const pixel *refPel = refPicInfo->compensatedPic->m_picOrg[c] +y * correctedPicsStride + x;
+-                        for (int y1 = 0; y1 < blkSize; y1++)
+-                        {
+-                            for (int x1 = 0; x1 < blkSize; x1++)
+-                            {
+-                                int pix  = *(srcPel + srcStride * y1 + x1);
+-                                int ref  = *(refPel + correctedPicsStride * y1 + x1);
+-                                int diff = pix - ref;
+-
+-                                variance += diff * diff;
+-
+-                                if (x1 != blkSize - 1)
+-                                {
+-                                    int pixR  = *(srcPel + srcStride * y1 + x1 + 1);
+-                                    int refR  = *(refPel + correctedPicsStride * y1 + x1 + 1);
+-                                    int diffR = pixR - refR;
+-                                    diffsum += (diffR - diff) * (diffR - diff);
+-                                }
+-                                if (y1 != blkSize - 1)
+-                                {
+-                                    int pixD  = *(srcPel + srcStride * y1 + x1 + srcStride);
+-                                    int refD  = *(refPel + correctedPicsStride * y1 + x1 + correctedPicsStride);
+-                                    int diffD = pixD - refD;
+-                                    diffsum += (diffD - diff) * (diffD - diff);
+-                                }
+-                            }
+-                        }
+-                        const int cntV = blkSize * blkSize;
+-                        const int cntD = 2 * cntV - blkSize - blkSize;
+-                        refPicInfo->noise[(y / blkSize) * refPicInfo->mvsStride + (x / blkSize)] = (int)round((15.0 * cntD / cntV * variance + 5.0) / (diffsum + 5.0));
++                        mctfPrim.bilateralVarianceDiffsum(srcPel, srcStride,
++                            m_metld->me.fencPUYuv.m_buf[0],
++                            blkSize, &variance, &diffsum);
++
++                        refPicInfo->noise[(y / blkSize) * refPicInfo->mvsStride + (x / blkSize)] = (int)round((300 * variance + 50) / (10 * diffsum + 50));
+                     }
+                 }
+ 
+                 double minError = 9999999;
+                 for (int i = 0; i < numRefs; i++)
+                 {
+-                    TemporalFilterRefPicInfo *refPicInfo = &m_mcstfRefList[i];
++                    TemporalFilterRefPicInfo* refPicInfo = &m_mcstfRefList[i];
+                     minError = X265_MIN(minError, (double)refPicInfo->error[(y / blkSize) * refPicInfo->mvsStride + (x / blkSize)]);
+                 }
+ 
+                 for (int i = 0; i < numRefs; i++)
+                 {
+-                    TemporalFilterRefPicInfo *refPicInfo = &m_mcstfRefList[i];
++                    TemporalFilterRefPicInfo* refPicInfo = &m_mcstfRefList[i];
+ 
+                     const int error = refPicInfo->error[(y / blkSize) * refPicInfo->mvsStride + (x / blkSize)];
+                     const int noise = refPicInfo->noise[(y / blkSize) * refPicInfo->mvsStride + (x / blkSize)];
+ 
+-                    const pixel *pCorrectedPelPtr = refPicInfo->compensatedPic->m_picOrg[c] + (y * correctedPicsStride + x);
++                    const pixel* pCorrectedPelPtr = refPicInfo->compensatedPic->m_picOrg[c] + (y * correctedPicsStride + x);
+                     const int refVal = (int)*pCorrectedPelPtr;
+                     double diff = (double)(refVal - orgVal);
+                     diff *= bitDepthDiffWeighting;
