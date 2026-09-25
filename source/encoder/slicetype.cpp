@@ -1850,25 +1850,13 @@ void PreLookaheadGroup::processTasks(int workerThreadID)
 void Lookahead::placeBref(Frame** frames, int start, int end, int num, int *brefs)
 {
     int avg = (start + end) / 2;
-    if (m_param->bEnableTemporalSubLayers < 2)
-    {
-        (*frames[avg]).m_lowres.sliceType = X265_TYPE_BREF;
-        (*brefs)++;
+    if (num <= 2)
         return;
-    }
-    else
-    {
-        if (num <= 2)
-            return;
-        else
-        {
-            (*frames[avg]).m_lowres.sliceType = X265_TYPE_BREF;
-            (*brefs)++;
-            placeBref(frames, start, avg, avg - start, brefs);
-            placeBref(frames, avg + 1, end, end - avg, brefs);
-            return;
-        }
-    }
+
+    (*frames[avg - 1]).m_lowres.sliceType = X265_TYPE_BREF;
+    (*brefs)++;
+    placeBref(frames, start, avg, avg - start - 1, brefs);
+    placeBref(frames, avg, end, end - avg - 1, brefs);
 }
 
 
@@ -1962,6 +1950,48 @@ bool Lookahead::generatemcstf(Frame * frameEnc, PicList refPic, int poclast)
     }
 
     return true;
+}
+
+
+static void pushBPyramidRange(Frame** list, int p0, int p1,
+    int64_t* pts, int& idx,
+    PicList& outputQueue, int layer = 0)
+{
+    Frame *f;
+    if (p1 - p0 <= 1)
+    {
+        return;
+    }
+    if (p1 - p0 == 2)
+    {
+        f = list[p0];
+        f->m_reorderedPts = pts[idx++];
+        f->m_tempLayer = layer;
+        outputQueue.pushBack(*f);
+        return;
+    }
+    if(p1 - p0 == 3)
+    {
+        f = list[p0];
+        f->m_reorderedPts = pts[idx++];
+        f->m_tempLayer = layer;
+        outputQueue.pushBack(*f);
+
+        f = list[p0 + 1];
+        f->m_reorderedPts = pts[idx++];
+        f->m_tempLayer = layer;
+        outputQueue.pushBack(*f);
+        return;
+    }
+    int midPoc = p0 + (p1 - p0) / 2;
+
+    f = list[midPoc - 1];
+    f->m_reorderedPts = pts[idx++];
+    f->m_tempLayer = layer;
+    outputQueue.pushBack(*f);
+
+    pushBPyramidRange(list, p0, midPoc, pts, idx, outputQueue, layer + 1);
+    pushBPyramidRange(list, midPoc, p1, pts, idx, outputQueue, layer + 1);
 }
 
 /* called by API thread or worker thread with inputQueueLock acquired */
@@ -2101,24 +2131,27 @@ void Lookahead::slicetypeDecide()
         for (bframes = 0, brefs = 0;; bframes++)
         {
             Lowres& frm = list[bframes]->m_lowres;
-
             if (frm.sliceTypeReq != X265_TYPE_AUTO && frm.sliceTypeReq != frm.sliceType)
                 frm.sliceType = frm.sliceTypeReq;
-            if (frm.sliceType == X265_TYPE_BREF && !m_param->bBPyramid && brefs == m_param->bBPyramid)
-            {
-                frm.sliceType = X265_TYPE_B;
-                x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid\n",
-                    frm.frameNum);
-            }
 
-            /* pyramid with multiple B-refs needs a big enough dpb that the preceding P-frame stays available.
-             * smaller dpb could be supported by smart enough use of mmco, but it's easier just to forbid it. */
-            else if (frm.sliceType == X265_TYPE_BREF && m_param->bBPyramid && brefs &&
-                m_param->maxNumReferences <= (brefs + 3))
+            if (!m_param->rc.bStatRead)
             {
-                frm.sliceType = X265_TYPE_B;
-                x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid and %d reference frames\n",
-                    frm.sliceType, m_param->maxNumReferences);
+                if (frm.sliceType == X265_TYPE_BREF && !m_param->bBPyramid && brefs == m_param->bBPyramid)
+                {
+                    frm.sliceType = X265_TYPE_B;
+                    x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid\n",
+                        frm.frameNum);
+                }
+
+                /* pyramid with multiple B-refs needs a big enough dpb that the preceding P-frame stays available.
+                * smaller dpb could be supported by smart enough use of mmco, but it's easier just to forbid it. */
+                else if (frm.sliceType == X265_TYPE_BREF && m_param->bBPyramid && brefs &&
+                    m_param->maxNumReferences <= (brefs + 3))
+                {
+                    frm.sliceType = X265_TYPE_B;
+                    x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid and %d reference frames\n",
+                        frm.frameNum, m_param->maxNumReferences);
+                }
             }
             if (((!m_param->bIntraRefresh || frm.frameNum == 0) && frm.frameNum - m_lastKeyframe >= m_param->keyframeMax &&
                 (!m_extendGopBoundary || frm.frameNum - m_lastKeyframe >= m_param->keyframeMax + m_param->gopLookahead)) ||
@@ -2319,7 +2352,7 @@ void Lookahead::slicetypeDecide()
                     /* insert a bref into the sequence */
                     if (m_param->bBPyramid && newbFrames)
                     {
-                        placeBref(list, listReset, newbFrames, newbFrames + 1, &brefs);
+                        placeBref(list, listReset, newbFrames +  1, newbFrames - listReset, &brefs);
                     }
                     if (m_param->rc.rateControlMode != X265_RC_CQP)
                     {
@@ -2404,7 +2437,7 @@ void Lookahead::slicetypeDecide()
 
                 /* insert a bref into the sequence */
                 if (m_param->bBPyramid && (newbFrames- listReset) > 1)
-                    placeBref(list, listReset, newbFrames, newbFrames + 1, &brefs);
+                    placeBref(list, listReset, newbFrames + 1, newbFrames - listReset, &brefs);
 
                 if (m_param->rc.rateControlMode != X265_RC_CQP)
                 {
@@ -2488,7 +2521,7 @@ void Lookahead::slicetypeDecide()
             /* insert a bref into the sequence */
             if (m_param->bBPyramid && !brefs)
             {
-                placeBref(list, 0, bframes, bframes + 1, &brefs);
+                placeBref(list, 0, bframes + 1, bframes, &brefs);
             }
 
             /* calculate the frame costs ahead of time for estimateFrameCost while we still have lowres */
@@ -2600,7 +2633,7 @@ void Lookahead::slicetypeDecide()
         /* insert a bref into the sequence */
         if (m_param->bBPyramid && bframes > 1 && !brefs)
         {
-            placeBref(list, 0, bframes, bframes + 1, &brefs);
+            placeBref(list, 0, bframes + 1, bframes, &brefs);
         }
         /* calculate the frame costs ahead of time for estimateFrameCost while we still have lowres */
         if (m_param->rc.rateControlMode != X265_RC_CQP)
@@ -2675,29 +2708,8 @@ void Lookahead::slicetypeDecide()
         list[bframes]->m_reorderedPts = pts[idx++];
         m_outputQueue.pushBack(*list[bframes]);
 
-        /* Add B-ref frame next to P frame in output queue, the B-ref encode before non B-ref frame */
-        if (brefs)
-        {
-            for (int i = 0; i < bframes; i++)
-            {
-                if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
-                {
-                    list[i]->m_reorderedPts = pts[idx++];
-                    m_outputQueue.pushBack(*list[i]);
-                }
-            }
-        }
-
-        /* add B frames to output queue */
-        for (int i = 0; i < bframes; i++)
-        {
-            /* push all the B frames into output queue except B-ref, which already pushed into output queue */
-            if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
-            {
-                list[i]->m_reorderedPts = pts[idx++];
-                m_outputQueue.pushBack(*list[i]);
-            }
-        }
+        /* Add hierarchical B-ref frame in output queue, the B-ref encode before non B-ref frame */
+        pushBPyramidRange(list, 0, bframes + 1, pts, idx, m_outputQueue, 1);
 
 
         bool isKeyFrameAnalyse = (m_param->rc.cuTree || (m_param->rc.vbvBufferSize && m_param->lookaheadDepth));
@@ -3516,6 +3528,51 @@ int Lookahead::findSliceType(int poc)
     return out_slicetype;
 }
 
+int64_t Lookahead::slicetypePathCostRecursiveBPyramid(Lowres **frames, int cur_p, int next_p, int64_t threshold)
+{
+    CostEstimateGroup estGroup(*this, frames);
+
+    // Base case: 2 or fewer frames
+    if (next_p - cur_p <= 1)
+        return 0;
+
+    int middle = cur_p + (next_p - cur_p) / 2;
+
+    // Cost the middle Bref frame
+    int64_t cost = estGroup.singleCost(cur_p, next_p, middle);
+
+    if (cost > threshold)
+        return cost;
+
+    // Recursively process left segment (cur_p to middle)
+    // This will create the pyramid structure on the left
+    if (middle - cur_p > 3)
+    {
+        cost += slicetypePathCostRecursiveBPyramid(frames, cur_p, middle, threshold - cost);
+    }
+    else
+    {
+        // Leaf B frames on left: cost them directly
+        for (int next_b = cur_p + 1; next_b < middle && cost < threshold; next_b++)
+            cost += estGroup.singleCost(cur_p, middle, next_b);
+    }
+
+    // Recursively process right segment (middle to next_p)
+    // This will create the pyramid structure on the right
+    if (next_p - middle > 3)
+    {
+        cost += slicetypePathCostRecursiveBPyramid(frames, middle, next_p, threshold - cost);
+    }
+    else
+    {
+        // Leaf B frames on right: cost them directly
+        for (int next_b = middle + 1; next_b < next_p && cost < threshold; next_b++)
+            cost += estGroup.singleCost(middle, next_p, next_b);
+    }
+
+    return cost;
+}
+
 int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t threshold)
 {
     int64_t cost = 0;
@@ -3539,19 +3596,14 @@ int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t thresh
         if (cost > threshold)
             break;
 
-        if (m_param->bBPyramid && next_p - cur_p > 2)
+        if (m_param->bBPyramid && next_p - cur_p > 3)
         {
-            int middle = cur_p + (next_p - cur_p) / 2;
-            cost += estGroup.singleCost(cur_p, next_p, middle);
-
-            for (int next_b = loc; next_b < middle && cost < threshold; next_b++)
-                cost += estGroup.singleCost(cur_p, middle, next_b);
-
-            for (int next_b = middle + 1; next_b < next_p && cost < threshold; next_b++)
-                cost += estGroup.singleCost(middle, next_p, next_b);
+            // Call recursive B-pyramid function
+            cost += slicetypePathCostRecursiveBPyramid(frames, cur_p, next_p, threshold - cost);
         }
         else
         {
+            // Flat structure: all B's reference both anchors directly
             for (int next_b = loc; next_b < next_p && cost < threshold; next_b++)
                 cost += estGroup.singleCost(cur_p, next_p, next_b);
         }
