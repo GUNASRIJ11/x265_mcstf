@@ -76,7 +76,7 @@ void determineLevel(const x265_param &param, VPS& vps)
      * for intra-only profiles (vps.ptl.intraConstraintFlag) */
     vps.ptl.lowerBitRateConstraintFlag = true;
 
-    vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : 1;
+    vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : (uint32_t)ceil(log2((double)param.bframes + 1)) + 1;
     
     if (param.internalCsp == X265_CSP_I420 && param.internalBitDepth <= 10)
     {
@@ -343,39 +343,36 @@ void determineLevel(const x265_param &param, VPS& vps)
  * circumstances it will be quite noisy */
 bool enforceLevel(x265_param& param, VPS& vps)
 {
-    vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : 1;
+    vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : (uint32_t)ceil(log2((double)param.bframes + 1)) + 1;
     for (uint32_t i = 0; i < vps.maxTempSubLayers; i++)
     {
         vps.numReorderPics[i] = (i == 0) ? ((param.bBPyramid && param.bframes > 1) ? 2 : !!param.bframes) : i;
         vps.maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(vps.numReorderPics[i] + 2, (uint32_t)param.maxNumReferences) + 1) + !!param.bEnableSCC;
     }
 
-    if (!!param.bEnableTemporalSubLayers)
+    for (int i = 0; i < (int)vps.maxTempSubLayers - 1; i++)
     {
-        for (int i = 0; i < MAX_T_LAYERS - 1; i++)
+        // a lower layer can not have higher value of numReorderPics than a higher layer
+        if (vps.numReorderPics[i + 1] < vps.numReorderPics[i])
         {
-            // a lower layer can not have higher value of numReorderPics than a higher layer
-            if (vps.numReorderPics[i + 1] < vps.numReorderPics[i])
-            {
-                vps.numReorderPics[i + 1] = vps.numReorderPics[i];
-            }
-            // the value of numReorderPics[i] shall be in the range of 0 to maxDecPicBuffering[i] - 1, inclusive
-            if (vps.numReorderPics[i] > vps.maxDecPicBuffering[i] - 1)
-            {
-                vps.maxDecPicBuffering[i] = vps.numReorderPics[i] + 1;
-            }
-            // a lower layer can not have higher value of maxDecPicBuffering than a higher layer
-            if (vps.maxDecPicBuffering[i + 1] < vps.maxDecPicBuffering[i])
-            {
-                vps.maxDecPicBuffering[i + 1] = vps.maxDecPicBuffering[i];
-            }
+            vps.numReorderPics[i + 1] = vps.numReorderPics[i];
         }
+        // the value of numReorderPics[i] shall be in the range of 0 to maxDecPicBuffering[i] - 1, inclusive
+        if (vps.numReorderPics[i] > vps.maxDecPicBuffering[i] - 1)
+        {
+            vps.maxDecPicBuffering[i] = vps.numReorderPics[i] + 1;
+        }
+        // a lower layer can not have higher value of maxDecPicBuffering than a higher layer
+        if (vps.maxDecPicBuffering[i + 1] < vps.maxDecPicBuffering[i])
+        {
+            vps.maxDecPicBuffering[i + 1] = vps.maxDecPicBuffering[i];
+        }
+    }
 
-        // the value of numReorderPics[i] shall be in the range of 0 to maxDecPicBuffering[ i ] -  1, inclusive
-        if (vps.numReorderPics[MAX_T_LAYERS - 1] > vps.maxDecPicBuffering[MAX_T_LAYERS - 1] - 1)
-        {
-            vps.maxDecPicBuffering[MAX_T_LAYERS - 1] = vps.numReorderPics[MAX_T_LAYERS - 1] + 1;
-        }
+    // the value of numReorderPics[i] shall be in the range of 0 to maxDecPicBuffering[ i ] -  1, inclusive
+    if (vps.numReorderPics[vps.maxTempSubLayers - 1] > vps.maxDecPicBuffering[vps.maxTempSubLayers - 1] - 1)
+    {
+        vps.maxDecPicBuffering[vps.maxTempSubLayers - 1] = vps.numReorderPics[vps.maxTempSubLayers - 1] + 1;
     }
     /* no level specified by user, just auto-detect from the configuration */
     if (param.levelIdc <= 0)
