@@ -219,7 +219,7 @@ void DPB::prepareEncode(Frame *newFrame)
     decodingRefreshMarking(pocCurr, slice->m_nalUnitType, layer);
 
     uint32_t maxDecBuffer = (slice->m_sps->maxDecPicBuffering[newFrame->m_tempLayer] >= 8 && slice->m_param->bEnableSCC) ? 7 : slice->m_sps->maxDecPicBuffering[newFrame->m_tempLayer];
-    computeRPS(pocCurr, newFrame->m_tempLayer, slice->isIRAP(), &slice->m_rps, maxDecBuffer, layer);
+    computeRPS(pocCurr, newFrame->m_tempLayer, slice->isIRAP(), &slice->m_rps, maxDecBuffer, layer, newFrame->m_lowres.sliceType);
     bool isTSAPic = ((slice->m_nalUnitType == 2) || (slice->m_nalUnitType == 3)) ? true : false;
     // Mark pictures in m_piclist as unreferenced if they are not included in RPS
     applyReferencePictureSet(&slice->m_rps, pocCurr, newFrame->m_tempLayer, isTSAPic, layer);
@@ -302,7 +302,7 @@ void DPB::prepareEncode(Frame *newFrame)
         slice->m_numRefIdx[1] = X265_MIN(newFrame->m_param->bBPyramid ? 3 : 2, slice->m_rps.numberOfPositivePictures + newFrame->refPicSetInterLayer0.size() + newFrame->refPicSetInterLayer1.size());
     else
 #endif
-        slice->m_numRefIdx[1] = X265_MIN(newFrame->m_param->bBPyramid ? 2 : 1, slice->m_rps.numberOfPositivePictures);
+        slice->m_numRefIdx[1] = slice->m_rps.numberOfPositivePictures;
 #if ENABLE_MULTIVIEW
     slice->setRefPicList(m_picList, layer, newFrame->refPicSetInterLayer0, newFrame->refPicSetInterLayer1);
 #else
@@ -376,7 +376,7 @@ void DPB::prepareEncode(Frame *newFrame)
     }
 }
 
-void DPB::computeRPS(int curPoc, int tempId, bool isRAP, RPS * rps, unsigned int maxDecPicBuffer, int scalableLayerId)
+void DPB::computeRPS(int curPoc, int tempId, bool isRAP, RPS * rps, unsigned int maxDecPicBuffer, int scalableLayerId, int frametype)
 {
     unsigned int poci = 0, numNeg = 0, numPos = 0;
 
@@ -387,7 +387,7 @@ void DPB::computeRPS(int curPoc, int tempId, bool isRAP, RPS * rps, unsigned int
         int layer = iterPic->m_param->numViews > 1 ? iterPic->m_viewId : (iterPic->m_param->numScalableLayers > 1) ? iterPic->m_sLayerId : 0;
         if (iterPic->m_valid && (iterPic->m_poc != curPoc) && iterPic->m_encData->m_bHasReferences && layer == scalableLayerId)
         {
-            if ((!m_bTemporalSublayer || (iterPic->m_tempLayer <= tempId)) && ((m_lastIDR >= curPoc) || (m_lastIDR <= iterPic->m_poc)))
+            if (((iterPic->m_tempLayer <= tempId) || (frametype == X265_TYPE_P && iterPic->m_lowres.sliceType <= X265_TYPE_P) || frametype == X265_TYPE_B) && ((m_lastIDR >= curPoc) || (m_lastIDR <= iterPic->m_poc)) && (curPoc - iterPic->m_poc <= (int)X265_MAX(16, iterPic->m_param->bframes + 1)))
             {
 #if ENABLE_MULTIVIEW
                     if (iterPic->m_param->numViews > 1 && layer && numNeg == (uint8_t)(iterPic->m_param->maxNumReferences - 1) && (iterPic->m_poc - curPoc) < 0)
