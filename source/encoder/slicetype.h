@@ -262,6 +262,7 @@ protected:
 
     void    slicetypePath(Lowres **frames, int length, char(*best_paths)[X265_LOOKAHEAD_MAX + 1]);
     int64_t slicetypePathCost(Lowres **frames, char *path, int64_t threshold);
+    int64_t slicetypePathCostRecursiveBPyramid(Lowres **frames, int cur_p, int next_p, int64_t threshold);
 
     void    calculateDurations(Frame *frame, Frame *prevFrame);
     void    setDurationsToLowres(Frame *frame);
