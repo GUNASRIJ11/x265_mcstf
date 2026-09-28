@@ -175,6 +175,8 @@ public:
     int     m_predType;       /* Type of slice predictors to be used - depends on the slice type */
     double  m_ipOffset;
     double  m_pbOffset;
+    int     m_lastAnchorPoc;
+    int     m_lastMiniGopLen;
     int64_t m_bframeBits;
     int64_t m_currentSatd;
     int     m_qpConstant[3];
@@ -283,6 +285,7 @@ public:
 
     // to be called for each curFrame to process RateControl and set QP
     int  rateControlStart(Frame* curFrame, RateControlEntry* rce, Encoder* enc);
+    double getPyramidQPOffset(int tempLayer, int maxTempLayer) const;
     void rateControlUpdateStats(RateControlEntry* rce);
     int  rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry* rce, int *filler);
     int  rowVbvRateControl(Frame* curFrame, uint32_t row, RateControlEntry* rce, double& qpVbv, uint32_t* m_sliceBaseRow, uint32_t sliceId);

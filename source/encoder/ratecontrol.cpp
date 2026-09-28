@@ -248,6 +248,8 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     m_cutreeShrMem = NULL;
     m_rce2Pass = NULL;
     m_encOrder = NULL;
+    m_lastAnchorPoc = -1;
+    m_lastMiniGopLen = 1;
     m_lastBsliceSatdCost = 0;
     m_cuTreeRecordIdx = NULL;
     m_movingAvgSum = 0.0;
@@ -1379,7 +1381,12 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         rce->keptAsRef = IS_REFERENCED(curFrame);
     m_predType = getPredictorType(curFrame->m_lowres.sliceType, m_sliceType);
     rce->poc = m_curSlice->m_poc;
-
+    if (m_sliceType != B_SLICE)
+    {
+        if (m_lastAnchorPoc >= 0)
+            m_lastMiniGopLen = curFrame->m_poc - m_lastAnchorPoc;
+        m_lastAnchorPoc = curFrame->m_poc;
+    }
     if (m_param->bEnableSBRC)
     {
         if (rce->poc == 0 || (m_framesDone % m_param->keyframeMax == 0))
@@ -1996,6 +2003,18 @@ double RateControl::tuneQScaleForGrain(double rcOverflow)
     return q;
 }
 
+/* Deepest B-pyramid layer a mini-GOP of this length produces, matching
+ * pushBPyramidRange()'s own recursion. A span of 7 tops out at layer 3; a span
+ * of 2 or 3 never gets past layer 1 - which is exactly why an absolute
+ * "tempLayer > 2" cutoff misjudges short mini-GOPs. */
+static int bPyramidMaxLayer(int span, int layer = 1)
+{
+    if (span <= 3)
+        return layer;
+    int mid = span / 2;
+    return X265_MAX(bPyramidMaxLayer(mid, layer + 1), bPyramidMaxLayer(span - mid, layer + 1));
+}
+
 double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
 {
     double q;
@@ -2047,7 +2066,17 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         m_sliderPos++;
     }
 
-    if((!m_param->bEnableSBRC && m_sliceType == B_SLICE) || (m_param->bEnableSBRC && !IS_REFERENCED(curFrame)))
+    static const float bRefOffset[6][6] =
+    {
+        /* max 0 */ { 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f },
+        /* max 1 */ { 0.00f, 4.52f, 4.52f, 4.52f, 4.52f, 4.52f },
+        /* max 2 */ { 0.00f, 3.39f, 4.52f, 4.52f, 4.52f, 4.52f },
+        /* max 3 */ { 0.00f, 2.26f, 3.39f, 4.52f, 4.52f, 4.52f },
+        /* max 4 */ { 0.00f, 1.13f, 2.26f, 3.39f, 4.52f, 4.52f },
+        /* max 5 */ { 0.00f, 0.00f, 1.13f, 2.26f, 3.39f, 4.52f },
+    };
+    int maxLayer = x265_clip3(1, 5, bPyramidMaxLayer(m_lastMiniGopLen));
+    if(((!m_param->bEnableSBRC && m_sliceType == B_SLICE) || (m_param->bEnableSBRC && !IS_REFERENCED(curFrame))))
     {
         /* B-frames don't have independent rate control, but rather get the
          * average QP of the two adjacent P-frames + an offset */
@@ -2071,10 +2100,15 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             }
         }
 
+        // if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
+        //     q0 -= m_pbOffset / 2;
+        // if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
+        //     q1 -= m_pbOffset / 2;
+
         if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
-            q0 -= m_pbOffset / 2;
+            q0 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[0][0]->m_tempLayer)];
         if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
-            q1 -= m_pbOffset / 2;
+            q1 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[1][0]->m_tempLayer)];
         if (i0 && i1)
             q = (q0 + q1) / 2 + m_ipOffset;
         else if (i0)
@@ -2082,14 +2116,15 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         else if (i1)
             q = q0;
         else if(m_isGrainEnabled && !m_2pass)
-                q = q1;
-            else
+            q = q1;
+        else
             q = (q0 * dt1 + q1 * dt0) / (dt0 + dt1);
 
-        if (IS_REFERENCED(curFrame))
-            q += m_pbOffset / 2;
-        else
-            q += m_pbOffset;
+        // if (IS_REFERENCED(curFrame))
+        //     q += m_pbOffset / 2;
+        // else
+        //     q += m_pbOffset;
+        q += bRefOffset[maxLayer][x265_clip3(0, 5, (int)curFrame->m_tempLayer)];
 
                 /* Set a min qp at scenechanges and transitions */
         if (m_isSceneTransition)
@@ -2397,7 +2432,18 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 && m_lastNonBPictType != I_SLICE && !m_isAbrReset) || (m_isNextGop && !m_framesDone))
             {
                 if (!m_param->rc.bStrictCbr)
-                    q = x265_qp2qScale(m_accumPQp / m_accumPNorm);
+                {
+                    /* m_accumPQp is updated for every frame, not just P frames, and B
+                     * frames are not normalized back to a P-equivalent the way I frames
+                     * are. With a deep B-pyramid it is therefore dominated by B QPs,
+                     * which sit well above the P level - anchoring the I frame to it
+                     * lands the I frame above its neighbouring P frames even after
+                     * ipFactor. m_avgPFrameQp is maintained P-only. */
+                    if (m_avgPFrameQp > 0)
+                        q = x265_qp2qScale(m_avgPFrameQp);
+                    else
+                        q = x265_qp2qScale(m_accumPQp / m_accumPNorm);
+                }
                 q /= fabs(m_param->rc.ipFactor);
                 m_avgPFrameQp = 0;
             }
@@ -2417,9 +2463,11 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                     q = x265_clip3(lqmin, lqmax, q);
                 }
             }
-            else if (m_qCompress != 1 && m_param->rc.rateControlMode == X265_RC_CRF)
+            else if (m_sliceType == I_SLICE && m_param->rc.rateControlMode == X265_RC_CRF)
             {
-                q = x265_qp2qScale(CRF_INIT_QP) / fabs(m_param->rc.ipFactor);
+                if (m_qCompress != 1)
+                    q = x265_qp2qScale(CRF_INIT_QP);
+                q /= fabs(m_param->rc.ipFactor);
             }
             else if (m_framesDone == 0 && !m_isVbv && m_param->rc.rateControlMode == X265_RC_ABR)
             {
