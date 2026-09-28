@@ -249,6 +249,7 @@ public:
     double  m_expectedBitsSum;   /* sum of qscale2bits after rceq, ratefactor, and overflow, only includes finished frames */
     int64_t m_predictedBits;
     int     *m_encOrder;
+    int     *m_cuTreeRecordIdx;
     RateControlEntry* m_rce2Pass;
     Encoder* m_top;
 
@@ -256,9 +257,15 @@ public:
 
     struct
     {
-        uint16_t *qpBuffer[2]; /* Global buffers for converting MB-tree quantizer data. */
-        int qpBufPos;          /* In order to handle pyramid reordering, QP buffer acts as a stack.
-                                * This value is the current position (0 or 1). */
+        uint16_t *qpBuffer[X265_BFRAME_MAX + 2]; /* Global buffers for converting MB-tree quantizer data.
+                                                * Sized for the deepest B-pyramid reorder distance
+                                                * (X265_BFRAME_MAX == largest --bframes), not just
+                                                * one level -- a single level is not enough once
+                                                * --bframes/--temporal-layers builds a deeper hierarchy. */
+        int qpBufPos;    /* Current position in the stack (0 .. qpBufDepth - 1). */
+        int qpBufDepth;  /* Number of qpBuffer[] slots actually allocated this run, derived
+                        * from m_param->bframes -- how far the resync below is allowed
+                        * to search before it must give up. */
     } m_cuTreeStats;
 
     RateControl(x265_param& p, Encoder *enc);
