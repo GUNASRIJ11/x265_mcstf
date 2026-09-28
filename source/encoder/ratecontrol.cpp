@@ -1578,7 +1578,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 {
                     m_isPatternPresent = true;
                 }
-                else if (m_sliceType == B_SLICE && !IS_REFERENCED(curFrame))
+                else if (m_sliceType == B_SLICE && curFrame->m_tempLayer > 1)
                 {
                     if (m_currentSatd != m_lastBsliceSatdCost && !rce->bLastMiniGopBFrame)
                     {
