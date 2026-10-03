@@ -166,6 +166,7 @@ public:
     pixel*        m_noiseBlurBuf;    // persistent blur buffer for estimateNoise() fallback path
     int32_t*      m_gradMagBuf;      // persistent gradient-magnitude buffer for estimateNoise()
     bool          m_filterThisGOP;  // noise gate decision for the GOP currently being dispatched
+    int           m_lastMcstfAnchorPoc; // POC of the last non-I anchor frame that MCSTF was applied to
 
     /* pre-lookahead */
     int           m_fullQueueSize;
