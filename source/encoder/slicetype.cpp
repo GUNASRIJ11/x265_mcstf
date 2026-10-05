@@ -1972,7 +1972,7 @@ bool Lookahead::generatemcstf(Frame * frameEnc, PicList refPic, int poclast)
 
 static void pushBPyramidRange(Frame** list, int p0, int p1,
     int64_t* pts, int& idx,
-    PicList& outputQueue, int layer = 0)
+    PicList& outputQueue, uint8_t layer = 0)
 {
     Frame *f;
     if (p1 - p0 <= 1)

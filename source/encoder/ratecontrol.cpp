@@ -1663,22 +1663,22 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     if (curFrame->m_forceqp || (!m_isAbr && !m_2pass))
     {
         m_qp = m_param->rc.qp;
-        int qpOffset[5] = { 1, 1, 4, 5, 6 };
-        double qpOffsetScale[5] = { 0, 0.2061 , 0.2286, 0.2333, 0.3};
-        double qpOffsetoff[5] = { 0,- 4.8848,- 5.7476,- 5.9,- 7.1444};
+        static const int qpOffset[5] = { 1, 1, 4, 5, 6 };
+        static const double qpOffsetScale[5] = { 0, 0.2061 , 0.2286, 0.2333, 0.3};
+        static const double qpOffsetoff[5] = { 0,- 4.8848,- 5.7476,- 5.9,- 7.1444};
 
         if (curFrame->m_forceqp)
             m_qp = (int32_t)(curFrame->m_forceqp + 0.5) - 1;
 
+        int layer = X265_MIN(curFrame->m_tempLayer, 4);
         if (m_sliceType == I_SLICE)
             m_qp = m_qp - 3;
         else {
-            m_qp += qpOffset[curFrame->m_tempLayer];
+            m_qp += qpOffset[layer];
 
             // adjust QP according to QPOffsetModel for the GOP entry.
-            double dqpOffset = m_qp * qpOffsetScale[curFrame->m_tempLayer] + qpOffsetoff[curFrame->m_tempLayer] + 0.5;
-            int qpOffset = (int)floor(x265_clip3(0.0, 3.0, dqpOffset));
-            m_qp += qpOffset;
+            double dqpOffset = m_qp * qpOffsetScale[layer] + qpOffsetoff[layer] + 0.5;
+            m_qp += (int)floor(x265_clip3(0.0, 3.0, dqpOffset));
         }
         m_qp = x265_clip3(m_param->rc.qpMin, m_param->rc.qpMax, m_qp);
         rce->qpaRc = curEncData.m_avgQpRc = curEncData.m_avgQpAq = m_qp;
