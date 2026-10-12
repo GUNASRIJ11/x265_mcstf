@@ -166,10 +166,10 @@ bool Search::initSearch(const x265_param& param, ScalingList& scalingList)
         m_qtTempTransformSkipFlag[1] = m_qtTempTransformSkipFlag[2] = NULL;
     }
 
-    CHECKED_MALLOC(m_intraPred, pixel, (32 * 32) * (33 + 3));
-    m_fencScaled = m_intraPred + 32 * 32;
-    m_fencTransposed = m_fencScaled + 32 * 32;
-    m_intraPredAngs = m_fencTransposed + 32 * 32;
+    CHECKED_MALLOC(m_intraPred, pixel, (64 * 64) * (33 + 3));
+    m_fencScaled = m_intraPred + 64 * 64;
+    m_fencTransposed = m_fencScaled + 64 * 64;
+    m_intraPredAngs = m_fencTransposed + 64 * 64;
 
     CHECKED_MALLOC(m_tsCoeff,    coeff_t, MAX_TS_SIZE * MAX_TS_SIZE);
     CHECKED_MALLOC(m_tsResidual, int16_t, MAX_TS_SIZE * MAX_TS_SIZE);
@@ -1860,7 +1860,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
     const Yuv* fencYuv = intraMode.fencYuv;
 
     uint32_t depth        = cuGeom.depth;
-    uint32_t initTuDepth = (cuGeom.depth == 0 || cu.m_partSize[0] != SIZE_2Nx2N);
+    uint32_t initTuDepth = (cu.m_partSize[0] != SIZE_2Nx2N);
     uint32_t numPU        = 1 << (2 * initTuDepth);
     uint32_t log2TrSize   = cuGeom.log2CUSize - initTuDepth;
     uint32_t tuSize       = 1 << log2TrSize;
@@ -1990,7 +1990,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
                 if (checkTransformSkip)
                     codeIntraLumaTSkip(intraMode, cuGeom, initTuDepth, absPartIdx, icosts);
                 else
-                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, false, icosts, depthRange);
+                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, true, icosts, depthRange);
                 COPY2_IF_LT(bcost, icosts.rdcost, bmode, rdModeList[i]);
             }
         }

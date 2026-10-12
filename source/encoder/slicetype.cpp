@@ -3570,7 +3570,7 @@ int64_t Lookahead::slicetypePathCostRecursiveBPyramid(Lowres **frames, int cur_p
     
     // Recursively process left segment (cur_p to middle)
     // This will create the pyramid structure on the left
-    if (middle - cur_p > 2)
+    if (middle - cur_p > 3)
     {
         cost += slicetypePathCostRecursiveBPyramid(frames, cur_p, middle, depth + 1, threshold - cost);
     }
@@ -3583,7 +3583,7 @@ int64_t Lookahead::slicetypePathCostRecursiveBPyramid(Lowres **frames, int cur_p
     
     // Recursively process right segment (middle to next_p)
     // This will create the pyramid structure on the right
-    if (next_p - middle > 2)
+    if (next_p - middle > 3)
     {
         cost += slicetypePathCostRecursiveBPyramid(frames, middle, next_p, depth + 1, threshold - cost);
     }
@@ -3623,7 +3623,7 @@ int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t thresh
             
         if (m_param->bBPyramid)
         {
-            if (next_p - cur_p > 2)
+            if (next_p - cur_p > 3)
             {
                 // Call recursive B-pyramid function
                  cost += slicetypePathCostRecursiveBPyramid(frames, cur_p, next_p, 0, threshold - cost);
@@ -4534,7 +4534,7 @@ void CostEstimateGroup::estimateCUCost(LookaheadTLD& tld, int cuX, int cuY, int 
                 int cost = tld.me.bufSATD(src, stride);
                 COPY2_IF_LT(mvpcost, cost, mvp, mvc[idx]);
                 /* Except for mv0 case, everyting else is likely to have enough residual to not trigger the skip. */
-                if (!mvp.notZero() && bBidir)
+                if (!mvp.notZero())
                     skipCost = cost;
             }
         }
@@ -4546,7 +4546,7 @@ void CostEstimateGroup::estimateCUCost(LookaheadTLD& tld, int cuX, int cuY, int 
             fencCost = tld.me.motionEstimate(fref, mvmin, mvmax, mvp, 0, NULL, searchRange, *fencMV, m_lookahead.m_param->maxSlices, 0);
         else
             fencCost = tld.me.motionEstimate(fref, mvmin, mvmax, mvp, 0, NULL, searchRange, *fencMV, m_lookahead.m_param->maxSlices, 0, fref->lowerResPlane[0]);
-        if (skipCost < 64 && skipCost < fencCost && bBidir)
+        if (skipCost < 64 && skipCost < fencCost)
         {
             fencCost = skipCost;
             *fencMV = 0;
