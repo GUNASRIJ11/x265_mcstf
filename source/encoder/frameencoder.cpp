@@ -726,6 +726,26 @@ void FrameEncoder::compressFrame(int layer)
         slice->m_chromaQpOffset[0] = slice->m_pps->chromaQpOffset[0] + qpCb < -12 ? (qpCb + (-12 - (slice->m_pps->chromaQpOffset[0] + qpCb))) : qpCb;
         slice->m_chromaQpOffset[1] = slice->m_pps->chromaQpOffset[1] + qpCr < -12 ? (qpCr + (-12 - (slice->m_pps->chromaQpOffset[1] + qpCr))) : qpCr;
     }
+    else if (m_param->chromaQpAdapt)
+    {
+        /* Adaptive slice-level chroma QP offset. Chroma degrades faster than luma
+         * as QP rises (the 4:2:0 chroma QP mapping caps chroma QP growth, so the
+         * effective chroma quality falls off sooner), so bias a negative offset
+         * that grows with the luma QP. Weight it by temporal layer: frames at the
+         * base layer are referenced the most, so improving their chroma propagates
+         * to the frames that predict from them. */
+        static const double s_layerScale[] = { 1.0, 0.85, 0.7, 0.55, 0.45, 0.4 };
+        const int tl = X265_MIN((int)m_frame[layer]->m_tempLayer, 5);
+        const double qpTerm = (qp > 22) ? (qp - 22) * 0.15 : 0.0;
+        const double strengthW = m_param->chromaQpAdapt / 2.0;
+        const int chromaOffset = -(int)(qpTerm * s_layerScale[tl] * strengthW + 0.5);
+
+        /* Keep pps + slice offset within the spec range [-12, 12] for each plane. */
+        const int ppsCb = slice->m_pps->chromaQpOffset[0];
+        const int ppsCr = slice->m_pps->chromaQpOffset[1];
+        slice->m_chromaQpOffset[0] = x265_clip3(-12 - ppsCb, 12 - ppsCb, chromaOffset);
+        slice->m_chromaQpOffset[1] = x265_clip3(-12 - ppsCr, 12 - ppsCr, chromaOffset);
+    }
 
     if (m_param->bOptQpPPS && m_param->bRepeatHeaders)
     {

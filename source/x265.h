@@ -2374,6 +2374,16 @@ typedef struct x265_param
 
     /*tune*/
     const char* tune;
+
+    /* Adaptive slice-level chroma QP offset. When non-zero, the encoder derives
+     * a per-frame negative Cb/Cr QP offset (signalled in the slice header) that
+     * steers more bits toward chroma. The offset grows with the luma QP (chroma
+     * degrades faster than luma under HEVC's chroma QP mapping) and is strongest
+     * for frames at the base temporal layer, which are referenced the most.
+     * The value is a strength level: 0 = disabled (default), 1 = mild,
+     * 2 = medium, 3 = strong. Applied on top of any fixed cbQpOffset/crQpOffset.
+     * Ignored when bHDR10Opt is set, which drives the slice offset itself. */
+    int       chromaQpAdapt;
 } x265_param;
 
 /* x265_param_alloc:

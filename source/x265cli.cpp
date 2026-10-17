@@ -292,6 +292,7 @@ namespace X265_NS {
         H0("   --[no-]const-vbv              Enable consistent vbv. Turned on with tune grain. Default %s\n", OPT(param->rc.bEnableConstVbv));
         H1("   --cbqpoffs <integer>          Chroma Cb QP Offset [-12..12]. Default %d\n", param->cbQpOffset);
         H1("   --crqpoffs <integer>          Chroma Cr QP Offset [-12..12]. Default %d\n", param->crQpOffset);
+        H1("   --chroma-qp-adapt <integer>   Adaptive slice chroma QP offset strength 0=off..3=strong. Default %d\n", param->chromaQpAdapt);
         H1("   --scaling-list <string>       Specify a file containing HM style quant scaling lists or 'default' or 'off'. Default: off\n");
         H1("   --zones <zone0>/<zone1>/...   Tweak the bitrate of regions of the video\n");
         H1("                                 Each zone is of the form\n");

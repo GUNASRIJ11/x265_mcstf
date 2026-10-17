@@ -3807,7 +3807,7 @@ void Encoder::initPPS(PPS *pps)
 
     pps->chromaQpOffset[0] = m_param->cbQpOffset;
     pps->chromaQpOffset[1] = m_param->crQpOffset;
-    pps->pps_slice_chroma_qp_offsets_present_flag = m_param->bHDR10Opt;
+    pps->pps_slice_chroma_qp_offsets_present_flag = m_param->bHDR10Opt || m_param->chromaQpAdapt;
 
     pps->bConstrainedIntraPred = m_param->bEnableConstrainedIntra;
     pps->bUseWeightPred = m_param->bEnableWeightedPred;

@@ -274,6 +274,7 @@ void x265_param_default(x265_param* param)
     /* Coding Quality */
     param->cbQpOffset = 0;
     param->crQpOffset = 0;
+    param->chromaQpAdapt = 0;
     param->rdPenalty = 0;
     param->psyRd = 2.0;
     param->psyRdoq = 0.0;
@@ -1103,6 +1104,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("weightb") p->bEnableWeightedBiPred = atobool(value);
     OPT("cbqpoffs") p->cbQpOffset = atoi(value);
     OPT("crqpoffs") p->crQpOffset = atoi(value);
+    OPT("chroma-qp-adapt") p->chromaQpAdapt = atoi(value);
     OPT("rd") p->rdLevel = atoi(value);
     OPT2("rdoq", "rdoq-level")
     {
@@ -1723,6 +1725,8 @@ int x265_check_params(x265_param* param)
     CHECK(param->cbQpOffset >  12, "Max. Chroma Cb QP Offset is  12");
     CHECK(param->crQpOffset < -12, "Min. Chroma Cr QP Offset is -12");
     CHECK(param->crQpOffset >  12, "Max. Chroma Cr QP Offset is  12");
+    CHECK(param->chromaQpAdapt < 0 || param->chromaQpAdapt > 3,
+          "Adaptive chroma QP offset strength (--chroma-qp-adapt) must be 0 (off) to 3");
 
     CHECK(tuQTMaxLog2Size > maxLog2CUSize,
           "QuadtreeTULog2MaxSize must be log2(maxCUSize) or smaller.");
@@ -2127,6 +2131,9 @@ void x265_print_params(x265_param* param)
     if (param->cbQpOffset || param->crQpOffset)
         x265_log(param, X265_LOG_INFO, "Cb/Cr QP Offset                     : %d / %d\n", param->cbQpOffset, param->crQpOffset);
 
+    if (param->chromaQpAdapt)
+        x265_log(param, X265_LOG_INFO, "Adaptive chroma QP offset strength  : %d\n", param->chromaQpAdapt);
+
     if (param->rdPenalty)
         x265_log(param, X265_LOG_INFO, "Intra 32x32 TU penalty type         : %d\n", param->rdPenalty);
 
@@ -2370,6 +2377,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bLossless, "lossless");
     s += snprintf(s, bufSize - (s - buf), " cbqpoffs=%d", p->cbQpOffset);
     s += snprintf(s, bufSize - (s - buf), " crqpoffs=%d", p->crQpOffset);
+    s += snprintf(s, bufSize - (s - buf), " chroma-qp-adapt=%d", p->chromaQpAdapt);
     s += snprintf(s, bufSize - (s - buf), " rc=%s", p->rc.rateControlMode == X265_RC_ABR ? (
          p->rc.bitrate == p->rc.vbvMaxBitrate ? "cbr" : "abr")
          : p->rc.rateControlMode == X265_RC_CRF ? "crf" : "cqp");
@@ -2854,6 +2862,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->bLossless = src->bLossless;
     dst->cbQpOffset = src->cbQpOffset;
     dst->crQpOffset = src->crQpOffset;
+    dst->chromaQpAdapt = src->chromaQpAdapt;
     dst->preferredTransferCharacteristics = src->preferredTransferCharacteristics;
     dst->pictureStructure = src->pictureStructure;
 

@@ -199,6 +199,7 @@ static const struct option long_options[] =
     { "qblur",          required_argument, NULL, 0 },
     { "cbqpoffs",       required_argument, NULL, 0 },
     { "crqpoffs",       required_argument, NULL, 0 },
+    { "chroma-qp-adapt", required_argument, NULL, 0 },
     { "rd",             required_argument, NULL, 0 },
     { "rdoq-level",     required_argument, NULL, 0 },
     { "no-rdoq-level",        no_argument, NULL, 0 },
