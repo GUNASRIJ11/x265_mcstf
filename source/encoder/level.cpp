@@ -76,7 +76,7 @@ void determineLevel(const x265_param &param, VPS& vps)
      * for intra-only profiles (vps.ptl.intraConstraintFlag) */
     vps.ptl.lowerBitRateConstraintFlag = true;
 
-    vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : (uint32_t)ceil(log2((double)param.bframes + 1)) + 1;
+    vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : 1;
     
     if (param.internalCsp == X265_CSP_I420 && param.internalBitDepth <= 10)
     {
@@ -335,6 +335,46 @@ void determineLevel(const x265_param &param, VPS& vps)
              profbuf, levels[i].name, tiers[vps.ptl.tierFlag]);
 }
 
+/* Display indices (1..p1-1) of the B frames between anchors p0 and p1 in the coding order of
+ * pushBPyramidRange() in slicetype.cpp: middle B-ref first, then both halves recursively */
+static void hierarchicalCodingOrder(int p0, int p1, int* order, int& count)
+{
+    if (p1 - p0 <= 1)
+        return;
+    if (p1 - p0 <= 3)
+    {
+        for (int i = p0 + 1; i < p1; i++)
+            order[count++] = i;
+        return;
+    }
+    int mid = p0 + (p1 - p0) / 2;
+    order[count++] = mid;
+    hierarchicalCodingOrder(p0, mid, order, count);
+    hierarchicalCodingOrder(mid, p1, order, count);
+}
+
+/* Largest number of pictures that precede a picture in decoding order and follow it in output
+ * order, over every mini-GOP length the lookahead can choose with the hierarchical B-pyramid */
+static uint32_t hierarchicalReorderPics(int bframes)
+{
+    uint32_t maxReorder = 0;
+    for (int numB = 1; numB <= bframes; numB++)
+    {
+        int order[X265_BFRAME_MAX + 1];
+        int count = 0;
+        order[count++] = numB + 1; // the anchor is coded first
+        hierarchicalCodingOrder(0, numB + 1, order, count);
+        for (int i = 0; i < count; i++)
+        {
+            uint32_t reorder = 0;
+            for (int j = 0; j < i; j++)
+                reorder += order[j] > order[i];
+            maxReorder = X265_MAX(maxReorder, reorder);
+        }
+    }
+    return maxReorder;
+}
+
 /* enforce a maximum decoder level requirement, in other words assure that a
  * decoder of the specified level may decode the video about to be created.
  * Lower parameters where necessary to ensure the video will be decodable by a
@@ -343,36 +383,43 @@ void determineLevel(const x265_param &param, VPS& vps)
  * circumstances it will be quite noisy */
 bool enforceLevel(x265_param& param, VPS& vps)
 {
-    vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : (uint32_t)ceil(log2((double)param.bframes + 1)) + 1;
+    vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : 1;
+    uint32_t numReorderPics = (param.bBPyramid && param.bframes > 1) ? 2 : !!param.bframes;
+    /* the hierarchical B-pyramid (used unless temporal sub-layers define the mini-GOP) can need more */
+    if (param.bBPyramid && param.bEnableTemporalSubLayers <= 2)
+        numReorderPics = X265_MAX(numReorderPics, hierarchicalReorderPics(param.bframes));
     for (uint32_t i = 0; i < vps.maxTempSubLayers; i++)
     {
-        vps.numReorderPics[i] = (i == 0) ? ((param.bBPyramid && param.bframes > 1) ? 2 : !!param.bframes) : i;
+        vps.numReorderPics[i] = (i == 0) ? numReorderPics : i;
         vps.maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(vps.numReorderPics[i] + 2, (uint32_t)param.maxNumReferences) + 1) + !!param.bEnableSCC;
     }
 
-    for (int i = 0; i < (int)vps.maxTempSubLayers - 1; i++)
+    if (!!param.bEnableTemporalSubLayers)
     {
-        // a lower layer can not have higher value of numReorderPics than a higher layer
-        if (vps.numReorderPics[i + 1] < vps.numReorderPics[i])
+        for (int i = 0; i < MAX_T_LAYERS - 1; i++)
         {
-            vps.numReorderPics[i + 1] = vps.numReorderPics[i];
+            // a lower layer can not have higher value of numReorderPics than a higher layer
+            if (vps.numReorderPics[i + 1] < vps.numReorderPics[i])
+            {
+                vps.numReorderPics[i + 1] = vps.numReorderPics[i];
+            }
+            // the value of numReorderPics[i] shall be in the range of 0 to maxDecPicBuffering[i] - 1, inclusive
+            if (vps.numReorderPics[i] > vps.maxDecPicBuffering[i] - 1)
+            {
+                vps.maxDecPicBuffering[i] = vps.numReorderPics[i] + 1;
+            }
+            // a lower layer can not have higher value of maxDecPicBuffering than a higher layer
+            if (vps.maxDecPicBuffering[i + 1] < vps.maxDecPicBuffering[i])
+            {
+                vps.maxDecPicBuffering[i + 1] = vps.maxDecPicBuffering[i];
+            }
         }
-        // the value of numReorderPics[i] shall be in the range of 0 to maxDecPicBuffering[i] - 1, inclusive
-        if (vps.numReorderPics[i] > vps.maxDecPicBuffering[i] - 1)
-        {
-            vps.maxDecPicBuffering[i] = vps.numReorderPics[i] + 1;
-        }
-        // a lower layer can not have higher value of maxDecPicBuffering than a higher layer
-        if (vps.maxDecPicBuffering[i + 1] < vps.maxDecPicBuffering[i])
-        {
-            vps.maxDecPicBuffering[i + 1] = vps.maxDecPicBuffering[i];
-        }
-    }
 
-    // the value of numReorderPics[i] shall be in the range of 0 to maxDecPicBuffering[ i ] -  1, inclusive
-    if (vps.numReorderPics[vps.maxTempSubLayers - 1] > vps.maxDecPicBuffering[vps.maxTempSubLayers - 1] - 1)
-    {
-        vps.maxDecPicBuffering[vps.maxTempSubLayers - 1] = vps.numReorderPics[vps.maxTempSubLayers - 1] + 1;
+        // the value of numReorderPics[i] shall be in the range of 0 to maxDecPicBuffering[ i ] -  1, inclusive
+        if (vps.numReorderPics[MAX_T_LAYERS - 1] > vps.maxDecPicBuffering[MAX_T_LAYERS - 1] - 1)
+        {
+            vps.maxDecPicBuffering[MAX_T_LAYERS - 1] = vps.numReorderPics[MAX_T_LAYERS - 1] + 1;
+        }
     }
     /* no level specified by user, just auto-detect from the configuration */
     if (param.levelIdc <= 0)
