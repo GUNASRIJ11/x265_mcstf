@@ -1615,7 +1615,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 {
                     m_isPatternPresent = true;
                 }
-                else if (m_sliceType == B_SLICE && curFrame->m_tempLayer > 1)
+                else if (m_sliceType == B_SLICE && curFrame->m_bPyramidLayer > 1)
                 {
                     if (m_currentSatd != m_lastBsliceSatdCost && !rce->bLastMiniGopBFrame)
                     {
@@ -1687,13 +1687,14 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         if (curFrame->m_forceqp)
             m_qp = (int32_t)(curFrame->m_forceqp + 0.5) - 1;
 
+        int layer = X265_MIN(curFrame->m_bPyramidLayer, 4);
         if (m_sliceType == I_SLICE)
             m_qp = m_qp - 3;
         else {
-            m_qp += qpOffset[curFrame->m_tempLayer];
+            m_qp += qpOffset[layer];
 
             // adjust QP according to QPOffsetModel for the GOP entry.
-            double dqpOffset = m_qp * qpOffsetScale[curFrame->m_tempLayer] + qpOffsetoff[curFrame->m_tempLayer] + 0.5;
+            double dqpOffset = m_qp * qpOffsetScale[layer] + qpOffsetoff[layer] + 0.5;
             int qpOffset = (int)floor(x265_clip3(0.0, 3.0, dqpOffset));
             m_qp += qpOffset;
         }
@@ -2126,9 +2127,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         //     q1 -= m_pbOffset / 2;
 
         if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
-            q0 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[0][0]->m_tempLayer)];
+            q0 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[0][0]->m_bPyramidLayer)];
         if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
-            q1 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[1][0]->m_tempLayer)];
+            q1 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[1][0]->m_bPyramidLayer)];
         if (i0 && i1)
             q = (q0 + q1) / 2 + m_ipOffset;
         else if (i0)
@@ -2144,7 +2145,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         //     q += m_pbOffset / 2;
         // else
         //     q += m_pbOffset;
-        q += bRefOffset[maxLayer][x265_clip3(0, 5, (int)curFrame->m_tempLayer)];
+        q += bRefOffset[maxLayer][x265_clip3(0, 5, (int)curFrame->m_bPyramidLayer)];
 
                 /* Set a min qp at scenechanges and transitions */
         if (m_isSceneTransition)

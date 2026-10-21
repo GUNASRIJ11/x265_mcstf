@@ -288,6 +288,9 @@ protected:
     /*Compute index for positioning B-Ref frames*/
     void     placeBref(Frame** frames, int start, int end, int num, int *brefs);
     void     compCostBref(Lowres **frame, int start, int end, int num);
+    /*Hierarchical B-pyramid used when the mini-GOP is not defined by temporal sub-layers*/
+    void     placeHierarchicalBref(Frame** frames, int start, int end, int num, int *brefs);
+    void     compCostHierarchicalBref(Lowres **frames, int p0, int p1, bool bP0Avail);
 };
 
 class PreLookaheadGroup : public BondedTaskGroup
