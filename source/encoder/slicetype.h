@@ -38,6 +38,7 @@ namespace X265_NS {
 struct Lowres;
 class Frame;
 class Lookahead;
+class CostEstimateGroup;
 
 #define LOWRES_COST_MASK  ((1 << 14) - 1)
 #define LOWRES_COST_SHIFT 14
@@ -261,10 +262,13 @@ protected:
     int64_t vbvFrameCost(Lowres **frames, int p0, int p1, int b);
     void    vbvLookahead(Lowres **frames, int numFrames, int keyframes);
     void    aqMotion(Lowres **frames, bool bintra);
+    void    aqMotionBPyramid(Lowres **frames, CostEstimateGroup& estGroup, int p0, int p1);
     void    calcMotionAdaptiveQuantFrame(Lowres **frames, int p0, int p1, int b);
     /* called by slicetypeAnalyse() to effect cuTree adjustments to adaptive
      * quant offsets */
     void    cuTree(Lowres **frames, int numframes, bool bintra);
+    void    cuTreeBPyramid(Lowres **frames, CostEstimateGroup& estGroup, double averageDuration, int p0, int p1);
+    void    cuTreeFinishBPyramid(Lowres **frames, double averageDuration, int p0, int p1);
     void    estimateCUPropagate(Lowres **frames, double average_duration, int p0, int p1, int b, int referenced);
     void    cuTreeFinish(Lowres *frame, double averageDuration, int ref0Distance);
     void    computeCUTreeQpOffset(Lowres *frame, double averageDuration, int ref0Distance);

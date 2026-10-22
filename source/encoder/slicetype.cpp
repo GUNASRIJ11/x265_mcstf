@@ -3650,23 +3650,38 @@ void Lookahead::aqMotion(Lowres **frames, bool bIntra)
         while (frames[lastnonb]->sliceType != X265_TYPE_P)
             lastnonb++;
         bframes = lastnonb - 1;
-        if (m_param->bBPyramid && bframes > 1)
+        if (m_param->bBPyramid && bframes > 2)
         {
-            int middle = (bframes + 1) / 2;
-            for (i = 1; i < lastnonb; i++)
-            {
-                int p0 = i > middle ? middle : curnonb;
-                int p1 = i < middle ? middle : lastnonb;
-                if (i != middle)
-                    calcMotionAdaptiveQuantFrame(frames, p0, p1, i);
-            }
-            calcMotionAdaptiveQuantFrame(frames, curnonb, lastnonb, middle);
+            CostEstimateGroup estGroup(*this, frames);
+            aqMotionBPyramid(frames, estGroup, curnonb, lastnonb);
         }
         else
             for (i = 1; i < lastnonb; i++)
                 calcMotionAdaptiveQuantFrame(frames, curnonb, lastnonb, i);
         calcMotionAdaptiveQuantFrame(frames, curnonb, lastnonb, lastnonb);
     }
+}
+
+/* Walks the B-pyramid between anchors p0 and p1 with the same split as placeBref():
+ * a B-ref sits at p0 + (p1 - p0) / 2 when there are more than two B-frames,
+ * otherwise the B-frames reference p0 and p1 directly */
+void Lookahead::aqMotionBPyramid(Lowres **frames, CostEstimateGroup& estGroup, int p0, int p1)
+{
+    if (p1 - p0 <= 3)
+    {
+        for (int b = p0 + 1; b < p1; b++)
+        {
+            estGroup.singleCost(p0, p1, b);
+            calcMotionAdaptiveQuantFrame(frames, p0, p1, b);
+        }
+        return;
+    }
+
+    int middle = p0 + (p1 - p0) / 2;
+    estGroup.singleCost(p0, p1, middle);
+    calcMotionAdaptiveQuantFrame(frames, p0, p1, middle);
+    aqMotionBPyramid(frames, estGroup, p0, middle);
+    aqMotionBPyramid(frames, estGroup, middle, p1);
 }
 
 void Lookahead::calcMotionAdaptiveQuantFrame(Lowres **frames, int p0, int p1, int b)
@@ -3784,24 +3799,10 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
 
         memset(frames[curnonb]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
         bframes = lastnonb - curnonb - 1;
-        if (m_param->bBPyramid && bframes > 1)
+        if (m_param->bBPyramid && bframes > 2)
         {
-            int middle = (bframes + 1) / 2 + curnonb;
-            estGroup.singleCost(curnonb, lastnonb, middle);
-            memset(frames[middle]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
-            while (i > curnonb)
-            {
-                int p0 = i > middle ? middle : curnonb;
-                int p1 = i < middle ? middle : lastnonb;
-                if (i != middle)
-                {
-                    estGroup.singleCost(p0, p1, i);
-                    estimateCUPropagate(frames, averageDuration, p0, p1, i, 0);
-                }
-                i--;
-            }
-
-            estimateCUPropagate(frames, averageDuration, curnonb, lastnonb, middle, 1);
+            cuTreeBPyramid(frames, estGroup, averageDuration, curnonb, lastnonb);
+            i = curnonb;
         }
         else
         {
@@ -3824,8 +3825,42 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
     }
 
     cuTreeFinish(frames[lastnonb], averageDuration, lastnonb);
-    if (m_param->bBPyramid && bframes > 1 && !m_param->rc.vbvBufferSize)
-        cuTreeFinish(frames[lastnonb + (bframes + 1) / 2], averageDuration, 0);
+    if (m_param->bBPyramid && bframes > 2 && !m_param->rc.vbvBufferSize)
+        cuTreeFinishBPyramid(frames, averageDuration, lastnonb, lastnonb + bframes + 1);
+}
+
+/* Propagates the B-frames between anchors p0 and p1 along the pyramid built by
+ * placeBref(): each B-ref collects the propagate cost of the frames referencing it
+ * before passing its own on to p0 and p1 */
+void Lookahead::cuTreeBPyramid(Lowres **frames, CostEstimateGroup& estGroup, double averageDuration, int p0, int p1)
+{
+    if (p1 - p0 <= 3)
+    {
+        for (int b = p1 - 1; b > p0; b--)
+        {
+            estGroup.singleCost(p0, p1, b);
+            estimateCUPropagate(frames, averageDuration, p0, p1, b, 0);
+        }
+        return;
+    }
+
+    int middle = p0 + (p1 - p0) / 2;
+    estGroup.singleCost(p0, p1, middle);
+    memset(frames[middle]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
+    cuTreeBPyramid(frames, estGroup, averageDuration, middle, p1);
+    cuTreeBPyramid(frames, estGroup, averageDuration, p0, middle);
+    estimateCUPropagate(frames, averageDuration, p0, p1, middle, 1);
+}
+
+void Lookahead::cuTreeFinishBPyramid(Lowres **frames, double averageDuration, int p0, int p1)
+{
+    if (p1 - p0 <= 3)
+        return;
+
+    int middle = p0 + (p1 - p0) / 2;
+    cuTreeFinish(frames[middle], averageDuration, 0);
+    cuTreeFinishBPyramid(frames, averageDuration, p0, middle);
+    cuTreeFinishBPyramid(frames, averageDuration, middle, p1);
 }
 
 void Lookahead::estimateCUPropagate(Lowres **frames, double averageDuration, int p0, int p1, int b, int referenced)
