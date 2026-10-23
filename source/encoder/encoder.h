@@ -241,6 +241,7 @@ public:
     bool               m_reconfigure;      // Encoder reconfigure in progress
     bool               m_reconfigureRc;
     bool               m_reconfigureZone;
+    bool               m_bChromaDistWeight; // RDO up-weights chroma distortion by the luma/chroma QP gap
 
     int                m_saveCtuDistortionLevel;
 

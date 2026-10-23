@@ -316,6 +316,7 @@ void FrameEncoder::threadMain()
             for (int i = 0; i < numTLD; i++)
             {
                 m_tld[i].analysis.initSearch(*m_param, m_top->m_scalingList);
+                m_tld[i].analysis.m_rdCost.setChromaDistWeight(m_top->m_bChromaDistWeight);
                 m_tld[i].analysis.create(m_tld);
             }
 
@@ -338,6 +339,7 @@ void FrameEncoder::threadMain()
     {
         m_tld = new ThreadLocalData;
         m_tld->analysis.initSearch(*m_param, m_top->m_scalingList);
+        m_tld->analysis.m_rdCost.setChromaDistWeight(m_top->m_bChromaDistWeight);
         m_tld->analysis.create(NULL);
         m_localTldIdx = 0;
     }
