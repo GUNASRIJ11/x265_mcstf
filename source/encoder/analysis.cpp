@@ -1510,6 +1510,7 @@ SplitData Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom&
         uint32_t minDepth = topSkipMinDepth(parentCTU, cuGeom);
         bool bDecidedDepth = parentCTU.m_cuDepth[cuGeom.absPartIdx] == depth;
         bool skipModes = false; /* Skip any remaining mode analyses at current depth */
+        bool bVerifyEarlySkip = false; /* skipModes came from early-skip and must survive a 2Nx2N ME check */
         bool skipRecursion = false; /* Skip recursion */
         bool splitIntra = true;
         bool skipRectAmp = false;
@@ -1645,6 +1646,12 @@ SplitData Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom&
             if (m_param->rdLevel)
                 skipModes = (m_param->bEnableEarlySkip || m_refineLevel == 2)
                 && md.bestMode && md.bestMode->cu.isSkipped(0); // TODO: sa8d threshold per depth
+
+            /* At rd 4 the skip decision only compared the best merge candidate with and
+             * without residual. At high B-frame QPs most residuals quantize to zero, so a
+             * poor merge prediction still wins it; keep the early-out only if 2Nx2N motion
+             * search cannot find a cheaper prediction (checked in step 3). */
+            bVerifyEarlySkip = skipModes && m_param->bEnableEarlySkip && m_refineLevel != 2 && m_param->rdLevel >= 4;
         }
         if (md.bestMode && m_param->recursionSkipMode && !bCtuInfoCheck && !(m_param->bAnalysisType == AVC_INFO && m_param->analysisLoadReuseLevel == 7 && (m_modeFlag[0] || m_modeFlag[1])))
         {
@@ -1745,9 +1752,9 @@ SplitData Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom&
             if (m_slice->m_pps->bUseDQP && depth <= m_slice->m_pps->maxCuDQPDepth && m_slice->m_pps->maxCuDQPDepth != 0)
                 setLambdaFromQP(parentCTU, qp);
 
-            if (!skipModes)
+            uint32_t refMasks[2];
+            if (!skipModes || bVerifyEarlySkip)
             {
-                uint32_t refMasks[2];
                 refMasks[0] = allSplitRefs;
                 md.pred[PRED_2Nx2N].cu.initSubCU(parentCTU, cuGeom, qp);
                 checkInter_rd0_4(md.pred[PRED_2Nx2N], cuGeom, SIZE_2Nx2N, refMasks);
@@ -1765,6 +1772,18 @@ SplitData Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom&
                     checkBidir2Nx2N(md.pred[PRED_2Nx2N], md.pred[PRED_BIDIR], cuGeom);
                 }
 
+                /* early-skip stands only if motion search found nothing cheaper than the skip candidate */
+                if (bVerifyEarlySkip)
+                {
+                    uint64_t meCost = md.pred[PRED_2Nx2N].sa8dCost;
+                    if (m_slice->m_sliceType == B_SLICE)
+                        meCost = X265_MIN(meCost, md.pred[PRED_BIDIR].sa8dCost);
+                    skipModes = meCost >= md.bestMode->sa8dCost;
+                }
+            }
+
+            if (!skipModes)
+            {
                 Mode *bestInter = &md.pred[PRED_2Nx2N];
                 if (!skipRectAmp)
                 {
