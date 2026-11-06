@@ -1617,7 +1617,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 {
                     m_isPatternPresent = true;
                 }
-                else if (m_sliceType == B_SLICE && curFrame->m_bPyramidLayer > 1)
+                else if (m_sliceType == B_SLICE && (m_param->bBPyramid ? curFrame->m_bPyramidLayer > 1 : !IS_REFERENCED(curFrame)))
                 {
                     if (m_currentSatd != m_lastBsliceSatdCost && !rce->bLastMiniGopBFrame)
                     {
@@ -1697,7 +1697,9 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     {
         bool userRatios = fabs(m_param->rc.ipFactor - 1.4f) > 1e-4f ||
                           fabs(m_param->rc.pbFactor - 1.3f) > 1e-4f;
-        if (!m_bRcReConfig && !getZone() && !userRatios)
+        /* the HM QP offset model follows the B-pyramid layers; without the pyramid CQP keeps
+         * the --ipratio/--pbratio constants above */
+        if (!m_bRcReConfig && !getZone() && !userRatios && m_param->bBPyramid)
         {
             static const int    qpOffset[5]      = { 1, 1, 4, 5, 6 };
             static const double qpOffsetScale[5] = { 0, 0.2061, 0.2286, 0.2333, 0.3 };
@@ -2057,6 +2059,15 @@ static double bPyramidQpOffset(double pbOffset, int maxLayer, int layer)
     return pbOffset * X265_MAX(0.0, 2.0 - 0.5 * (maxLayer - layer));
 }
 
+/* QP offset of a B frame above its anchors: by pyramid layer with the B-pyramid, otherwise
+ * pbOffset as without the hierarchical pyramid (pbOffset / 2 for a B-ref) */
+double RateControl::bFrameQpOffset(const Frame* frame, int maxLayer) const
+{
+    if (m_param->bBPyramid)
+        return bPyramidQpOffset(m_pbOffset, maxLayer, frame->m_bPyramidLayer);
+    return IS_REFERENCED(frame) ? m_pbOffset / 2 : m_pbOffset;
+}
+
 double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
 {
     double q;
@@ -2134,9 +2145,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         }
 
         if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
-            q0 -= bPyramidQpOffset(m_pbOffset, maxLayer, m_curSlice->m_refFrameList[0][0]->m_bPyramidLayer);
+            q0 -= bFrameQpOffset(m_curSlice->m_refFrameList[0][0], maxLayer);
         if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
-            q1 -= bPyramidQpOffset(m_pbOffset, maxLayer, m_curSlice->m_refFrameList[1][0]->m_bPyramidLayer);
+            q1 -= bFrameQpOffset(m_curSlice->m_refFrameList[1][0], maxLayer);
         if (i0 && i1)
             q = (q0 + q1) / 2 + m_ipOffset;
         else if (i0)
@@ -2148,7 +2159,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         else
             q = (q0 * dt1 + q1 * dt0) / (dt0 + dt1);
 
-        q += bPyramidQpOffset(m_pbOffset, maxLayer, curFrame->m_bPyramidLayer);
+        q += bFrameQpOffset(curFrame, maxLayer);
 
                 /* Set a min qp at scenechanges and transitions */
         if (m_isSceneTransition)
