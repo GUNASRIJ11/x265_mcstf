@@ -1628,7 +1628,9 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 {
                     m_isPatternPresent = true;
                 }
-                else if (m_sliceType == B_SLICE && (m_param->bBPyramid ? curFrame->m_bPyramidLayer > 1 : !IS_REFERENCED(curFrame)))
+                /* non-reference B frames (as in master) and the B-refs below the top of the pyramid;
+                 * a pyramid level test alone misses mini-GOPs of one or two B frames, which are all on level 1 */
+                else if (m_sliceType == B_SLICE && (!IS_REFERENCED(curFrame) || curFrame->m_bPyramidLayer > 1))
                 {
                     if (m_currentSatd != m_lastBsliceSatdCost && !rce->bLastMiniGopBFrame)
                     {

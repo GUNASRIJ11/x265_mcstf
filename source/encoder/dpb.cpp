@@ -302,10 +302,7 @@ void DPB::prepareEncode(Frame *newFrame)
         slice->m_numRefIdx[1] = X265_MIN(newFrame->m_param->bBPyramid ? 3 : 2, slice->m_rps.numberOfPositivePictures + newFrame->refPicSetInterLayer0.size() + newFrame->refPicSetInterLayer1.size());
     else
 #endif
-    if (m_bTemporalSublayer)
         slice->m_numRefIdx[1] = X265_MIN(newFrame->m_param->bBPyramid ? 2 : 1, slice->m_rps.numberOfPositivePictures);
-    else
-        slice->m_numRefIdx[1] = slice->m_rps.numberOfPositivePictures;
 #if ENABLE_MULTIVIEW
     slice->setRefPicList(m_picList, layer, newFrame->refPicSetInterLayer0, newFrame->refPicSetInterLayer1);
 #else

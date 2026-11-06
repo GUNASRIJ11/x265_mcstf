@@ -390,7 +390,8 @@ bool enforceLevel(x265_param& param, VPS& vps)
         numReorderPics = X265_MAX(numReorderPics, hierarchicalReorderPics(param.bframes));
     for (uint32_t i = 0; i < vps.maxTempSubLayers; i++)
     {
-        vps.numReorderPics[i] = (i == 0) ? numReorderPics : i;
+        /* a higher sub-layer never has fewer reorder pictures than a lower one */
+        vps.numReorderPics[i] = (i == 0) ? numReorderPics : X265_MAX(i, numReorderPics);
         vps.maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(vps.numReorderPics[i] + 2, (uint32_t)param.maxNumReferences) + 1) + !!param.bEnableSCC;
     }
 
