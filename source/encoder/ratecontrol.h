@@ -48,6 +48,41 @@ struct SPS;
 #define MIN_AMORTIZE_FRACTION 0.2
 #define CLIP_DURATION(f) x265_clip3(MIN_FRAME_DURATION, MAX_FRAME_DURATION, f)
 
+/* Deepest B-pyramid layer a mini-GOP of this length produces, matching
+ * pushBPyramidRange()'s own recursion. A span of 7 tops out at layer 3; a span
+ * of 2 or 3 never gets past layer 1 - which is exactly why an absolute
+ * "tempLayer > 2" cutoff misjudges short mini-GOPs. */
+static inline int bPyramidMaxLayer(int span, int layer = 1)
+{
+    if (span <= 3)
+        return layer;
+    int mid = span / 2;
+    return X265_MAX(bPyramidMaxLayer(mid, layer + 1), bPyramidMaxLayer(span - mid, layer + 1));
+}
+
+/* Pyramid layer pushBPyramidRange() gives the B frame at list index idx of the
+ * range [p0, p1), where list[p1 - 1] is the anchor closing the range */
+static inline int bPyramidLayerAt(int p0, int p1, int idx, int layer = 1)
+{
+    if (p1 - p0 <= 3)
+        return layer;
+    int mid = p0 + (p1 - p0) / 2;
+    if (idx == mid - 1)
+        return layer;
+    return idx < mid - 1 ? bPyramidLayerAt(p0, mid, idx, layer + 1) : bPyramidLayerAt(mid, p1, idx, layer + 1);
+}
+
+/* Exponent of --pbratio giving a B-pyramid layer's qscale relative to its anchors
+ * (its QP offset is this times 6 * log2(pbratio)): 2 for the deepest layer of the
+ * mini-GOP and 0.5 less for each shallower layer, down to 0. Layer 0 is an I/P anchor. */
+static inline double bPyramidQpCoef(int maxLayer, int layer)
+{
+    if (layer <= 0)
+        return 0;
+    layer = X265_MIN(layer, maxLayer);
+    return X265_MAX(0.0, 2.0 - 0.5 * (maxLayer - layer));
+}
+
 struct Predictor
 {
     double coeffMin;
@@ -106,6 +141,8 @@ struct RateControlEntry
     int      miscBits;
     int      coeffBits;
     bool     keptAsRef;
+    int      bPyramidLayer;     /* B-pyramid layer, 0 for I/P */
+    int      bPyramidMaxLayer;  /* deepest layer of its mini-GOP; 0 if unknown (older 2-pass stats) */
     bool     scenecut;
     bool     isIdr;
     SEIPictureTiming *picTimingSEI;
@@ -323,6 +360,7 @@ protected:
     void   initFramePredictors();
     double getDiffLimitedQScale(RateControlEntry *rce, double q);
     double bFrameQpOffset(const Frame* frame, int maxLayer) const;
+    double bFrameQscaleRatio(const RateControlEntry* rce) const;
     double countExpectedBits(int startPos, int framesCount);
     bool   vbv2Pass(uint64_t allAvailableBits, int frameCount, int startPos);
     bool   findUnderflow(double *fills, int *t0, int *t1, int over, int framesCount);

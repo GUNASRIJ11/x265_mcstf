@@ -2943,6 +2943,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             int p0 = IS_X265_TYPE_I(frames[curNonB]->sliceType) ? curNonB : prevNonB;
             frames[nextNonB]->plannedSatd[idx] = vbvFrameCost(frames, p0, curNonB, curNonB);
             frames[nextNonB]->plannedType[idx] = frames[curNonB]->sliceType;
+            frames[nextNonB]->plannedBQpCoef[idx] = 0;
             frames[nextNonB]->plannedCpbDuration[idx] = frames[curNonB]->cpbDurationSecs;
 
             /* Save the nextNonB Cost in each B frame of the current miniGop */
@@ -2952,6 +2953,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                 {
                     frames[j]->plannedSatd[frames[j]->indB] = frames[nextNonB]->plannedSatd[idx];
                     frames[j]->plannedType[frames[j]->indB] = frames[nextNonB]->plannedType[idx];
+                    frames[j]->plannedBQpCoef[frames[j]->indB] = 0;
                     frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextNonB]->cpbDurationSecs;
                 }
             }
@@ -2980,8 +2982,15 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             }
             else
                 satdCost = vbvFrameCost(frames, prevNonB, curNonB, i);
+            /* the QP rate control will give this B frame: its layer in pushBPyramidRange()'s
+             * pyramid over the mini-GOP (frames[i] is list index i - prevNonB - 1) */
+            const int span = curNonB - prevNonB;
+            const double bQpCoef = m_param->bBPyramid
+                ? bPyramidQpCoef(x265_clip3(1, 5, bPyramidMaxLayer(span)), bPyramidLayerAt(0, span, i - prevNonB - 1))
+                : 1.0;
             frames[nextNonB]->plannedSatd[idx] = satdCost;
             frames[nextNonB]->plannedType[idx] = type;
+            frames[nextNonB]->plannedBQpCoef[idx] = bQpCoef;
             frames[nextNonB]->plannedCpbDuration[idx] = frames[i]->cpbDurationSecs;
 
             /* Save the nextB Cost in each B frame of the current miniGop */
@@ -2993,6 +3002,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                     continue;
                 frames[j]->plannedSatd[frames[j]->indB] = satdCost;
                 frames[j]->plannedType[frames[j]->indB] = type;
+                frames[j]->plannedBQpCoef[frames[j]->indB] = bQpCoef;
                 frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextB]->cpbDurationSecs;
             }
         }
