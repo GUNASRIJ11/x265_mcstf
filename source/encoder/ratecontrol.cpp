@@ -3353,8 +3353,9 @@ int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry*
             if (m_bRcReConfig)
                 crfVal = curFrame->m_targetCrf;
             else
+                /* B frames take their anchors' QP plus the offset of their B-pyramid layer */
                 crfVal = rce->sliceType == I_SLICE ? (m_param->rc.rfConstant - m_ipOffset) :
-                (rce->sliceType == B_SLICE ? (m_param->rc.rfConstant + m_pbOffset) : m_param->rc.rfConstant);
+                (rce->sliceType == B_SLICE ? (m_param->rc.rfConstant + bFrameQpOffset(curFrame, rce->bPyramidMaxLayer)) : m_param->rc.rfConstant);
         }
 
         curEncData.m_rateFactor = crfVal;
