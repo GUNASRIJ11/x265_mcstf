@@ -2044,6 +2044,19 @@ static int bPyramidMaxLayer(int span, int layer = 1)
     return X265_MAX(bPyramidMaxLayer(mid, layer + 1), bPyramidMaxLayer(span - mid, layer + 1));
 }
 
+/* QP offset of a B-pyramid layer above its anchors, derived from --pbratio
+ * (pbOffset = 6 * log2(pbratio)): the deepest layer of the mini-GOP sits 2 * pbOffset
+ * above the anchors and each shallower layer pbOffset / 2 less, down to 0. Layer 0
+ * is an I/P anchor. pbratio 1.0 (--tune grain, --strict-cbr) keeps every layer at
+ * the anchor QP. */
+static double bPyramidQpOffset(double pbOffset, int maxLayer, int layer)
+{
+    if (layer <= 0)
+        return 0;
+    layer = X265_MIN(layer, maxLayer);
+    return pbOffset * X265_MAX(0.0, 2.0 - 0.5 * (maxLayer - layer));
+}
+
 double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
 {
     double q;
@@ -2135,9 +2148,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         //     q1 -= m_pbOffset / 2;
 
         if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
-            q0 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[0][0]->m_bPyramidLayer)];
+            q0 -= bPyramidQpOffset(m_pbOffset, maxLayer, m_curSlice->m_refFrameList[0][0]->m_bPyramidLayer);
         if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
-            q1 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[1][0]->m_bPyramidLayer)];
+            q1 -= bPyramidQpOffset(m_pbOffset, maxLayer, m_curSlice->m_refFrameList[1][0]->m_bPyramidLayer);
         if (i0 && i1)
             q = (q0 + q1) / 2 + m_ipOffset;
         else if (i0)
@@ -2149,11 +2162,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         else
             q = (q0 * dt1 + q1 * dt0) / (dt0 + dt1);
 
-        // if (IS_REFERENCED(curFrame))
-        //     q += m_pbOffset / 2;
-        // else
-        //     q += m_pbOffset;
-        q += bRefOffset[maxLayer][x265_clip3(0, 5, (int)curFrame->m_bPyramidLayer)];
+        q += bPyramidQpOffset(m_pbOffset, maxLayer, curFrame->m_bPyramidLayer);
 
                 /* Set a min qp at scenechanges and transitions */
         if (m_isSceneTransition)
