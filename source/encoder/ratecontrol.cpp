@@ -1677,27 +1677,9 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         m_leadingNoBSatd = m_currentSatd;
     }
     rce->leadingNoBSatd = m_leadingNoBSatd;
-    if (curFrame->m_forceqp || (!m_isAbr && !m_2pass))
+    if (curFrame->m_forceqp)
     {
-        m_qp = m_param->rc.qp;
-        int qpOffset[5] = { 1, 1, 4, 5, 6 };
-        double qpOffsetScale[5] = { 0, 0.2061 , 0.2286, 0.2333, 0.3};
-        double qpOffsetoff[5] = { 0,- 4.8848,- 5.7476,- 5.9,- 7.1444};
-
-        if (curFrame->m_forceqp)
-            m_qp = (int32_t)(curFrame->m_forceqp + 0.5) - 1;
-
-        int layer = X265_MIN(curFrame->m_bPyramidLayer, 4);
-        if (m_sliceType == I_SLICE)
-            m_qp = m_qp - 3;
-        else {
-            m_qp += qpOffset[layer];
-
-            // adjust QP according to QPOffsetModel for the GOP entry.
-            double dqpOffset = m_qp * qpOffsetScale[layer] + qpOffsetoff[layer] + 0.5;
-            int qpOffset = (int)floor(x265_clip3(0.0, 3.0, dqpOffset));
-            m_qp += qpOffset;
-        }
+        m_qp = (int32_t)(curFrame->m_forceqp + 0.5) - 1;
         m_qp = x265_clip3(m_param->rc.qpMin, m_param->rc.qpMax, m_qp);
         rce->qpaRc = curEncData.m_avgQpRc = curEncData.m_avgQpAq = m_qp;
         if (m_isAbr || m_2pass)
@@ -1705,8 +1687,32 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
             rce->qpNoVbv = rce->qpaRc;
             m_lastQScaleFor[m_sliceType] = x265_qp2qScale(rce->qpaRc);
             if (rce->poc == 0)
-                 m_lastQScaleFor[P_SLICE] = m_lastQScaleFor[m_sliceType] * fabs(m_param->rc.ipFactor);
+                m_lastQScaleFor[P_SLICE] = m_lastQScaleFor[m_sliceType] * fabs(m_param->rc.ipFactor);
             rce->frameSizePlanned = predictSize(&m_pred[m_predType], m_qp, (double)m_currentSatd);
+        }
+    }
+    else if (!m_isAbr && !m_2pass)
+    {
+        bool userRatios = fabs(m_param->rc.ipFactor - 1.4f) > 1e-4f ||
+                          fabs(m_param->rc.pbFactor - 1.3f) > 1e-4f;
+        if (!m_bRcReConfig && !getZone() && !userRatios)
+        {
+            static const int    qpOffset[5]      = { 1, 1, 4, 5, 6 };
+            static const double qpOffsetScale[5] = { 0, 0.2061, 0.2286, 0.2333, 0.3 };
+            static const double qpOffsetOff[5]   = { 0, -4.8848, -5.7476, -5.9, -7.1444 };
+
+            int layer = X265_MIN(curFrame->m_bPyramidLayer, 4);
+            if (m_sliceType == I_SLICE)
+                m_qp = m_param->rc.qp - 3;
+            else
+            {
+                m_qp = m_param->rc.qp + qpOffset[layer];
+                double dqpOffset = m_qp * qpOffsetScale[layer] + qpOffsetOff[layer] + 0.5;
+                int modelOffset = (int)floor(x265_clip3(0.0, 3.0, dqpOffset));
+                m_qp += modelOffset;
+            }
+            m_qp = x265_clip3(m_param->rc.qpMin, m_param->rc.qpMax, m_qp);
+            rce->qpaRc = curEncData.m_avgQpRc = curEncData.m_avgQpAq = m_qp;
         }
     }
     m_framesDone++;
