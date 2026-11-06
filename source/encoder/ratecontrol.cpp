@@ -2036,6 +2036,20 @@ static int bPyramidMaxLayer(int span, int layer = 1)
     return X265_MAX(bPyramidMaxLayer(mid, layer + 1), bPyramidMaxLayer(span - mid, layer + 1));
 }
 
+double RateControl::getPyramidQPOffset(int tempLayer, int maxTempLayer) const
+{
+    static const float bRefOffset[6][6] =
+    {
+        { 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f },
+        { 0.00f, 4.52f, 4.52f, 4.52f, 4.52f, 4.52f },
+        { 0.00f, 3.39f, 4.52f, 4.52f, 4.52f, 4.52f },
+        { 0.00f, 2.26f, 3.39f, 4.52f, 4.52f, 4.52f },
+        { 0.00f, 1.13f, 2.26f, 3.39f, 4.52f, 4.52f },
+        { 0.00f, 0.00f, 1.13f, 2.26f, 3.39f, 4.52f },
+    };
+    return bRefOffset[x265_clip3(0, 5, maxTempLayer)][x265_clip3(0, 5, tempLayer)];
+}
+
 double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
 {
     double q;
@@ -2087,15 +2101,6 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         m_sliderPos++;
     }
 
-    static const float bRefOffset[6][6] =
-    {
-        /* max 0 */ { 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f },
-        /* max 1 */ { 0.00f, 4.52f, 4.52f, 4.52f, 4.52f, 4.52f },
-        /* max 2 */ { 0.00f, 3.39f, 4.52f, 4.52f, 4.52f, 4.52f },
-        /* max 3 */ { 0.00f, 2.26f, 3.39f, 4.52f, 4.52f, 4.52f },
-        /* max 4 */ { 0.00f, 1.13f, 2.26f, 3.39f, 4.52f, 4.52f },
-        /* max 5 */ { 0.00f, 0.00f, 1.13f, 2.26f, 3.39f, 4.52f },
-    };
     int maxLayer = x265_clip3(1, 5, bPyramidMaxLayer(m_lastMiniGopLen));
     if(((!m_param->bEnableSBRC && m_sliceType == B_SLICE) || (m_param->bEnableSBRC && !IS_REFERENCED(curFrame))))
     {
@@ -2121,15 +2126,10 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             }
         }
 
-        // if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
-        //     q0 -= m_pbOffset / 2;
-        // if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
-        //     q1 -= m_pbOffset / 2;
-
         if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
-            q0 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[0][0]->m_bPyramidLayer)];
+            q0 -= getPyramidQPOffset(m_curSlice->m_refFrameList[0][0]->m_bPyramidLayer, maxLayer);
         if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
-            q1 -= bRefOffset[maxLayer][x265_clip3(0, 5, (int)m_curSlice->m_refFrameList[1][0]->m_bPyramidLayer)];
+            q1 -= getPyramidQPOffset(m_curSlice->m_refFrameList[1][0]->m_bPyramidLayer, maxLayer);
         if (i0 && i1)
             q = (q0 + q1) / 2 + m_ipOffset;
         else if (i0)
@@ -2141,11 +2141,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         else
             q = (q0 * dt1 + q1 * dt0) / (dt0 + dt1);
 
-        // if (IS_REFERENCED(curFrame))
-        //     q += m_pbOffset / 2;
-        // else
-        //     q += m_pbOffset;
-        q += bRefOffset[maxLayer][x265_clip3(0, 5, (int)curFrame->m_bPyramidLayer)];
+        q += getPyramidQPOffset(curFrame->m_bPyramidLayer, maxLayer);
 
                 /* Set a min qp at scenechanges and transitions */
         if (m_isSceneTransition)
