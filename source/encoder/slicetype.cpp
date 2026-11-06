@@ -2811,7 +2811,19 @@ void Lookahead::slicetypeDecide()
 
         /* Add hierarchical B-ref frame in output queue, the B-ref encode before non B-ref frame.
          * codedFrameOrderedIndex is populated in coded order so the duration calc below stays correct. */
-        pushBPyramidRange(list, 0, bframes + 1, pts, idx, codedFrameOrderedIndex, m_outputQueue, 1);
+        if (m_param->bBPyramid)
+            pushBPyramidRange(list, 0, bframes + 1, pts, idx, codedFrameOrderedIndex, m_outputQueue, 1);
+        else
+        {
+            /* no B-refs without the pyramid: the B frames are coded in display order, all on one level */
+            for (int i = 0; i < bframes; i++)
+            {
+                codedFrameOrderedIndex[idx] = i;
+                list[i]->m_reorderedPts = pts[idx++];
+                list[i]->m_bPyramidLayer = 1;
+                m_outputQueue.pushBack(*list[i]);
+            }
+        }
 
         /* Compute HRD CpbDpb delays */
         {

@@ -322,6 +322,7 @@ protected:
     bool   analyseABR2Pass(uint64_t allAvailableBits);
     void   initFramePredictors();
     double getDiffLimitedQScale(RateControlEntry *rce, double q);
+    double bFrameQpOffset(const Frame* frame, int maxLayer) const;
     double countExpectedBits(int startPos, int framesCount);
     bool   vbv2Pass(uint64_t allAvailableBits, int frameCount, int startPos);
     bool   findUnderflow(double *fills, int *t0, int *t1, int over, int framesCount);
