@@ -2424,6 +2424,8 @@ typedef struct x265_param
      * every picture. It is written on the base layer only and cannot be combined with
      * numViews > 1. Default -1 (disabled). */
     int      framePacking;
+
+    int      bEnableIntra64x64;
 } x265_param;
 
 /* x265_param_alloc:

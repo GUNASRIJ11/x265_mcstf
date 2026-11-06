@@ -744,7 +744,7 @@ uint64_t Analysis::compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom
                 addSplitFlagCost(*md.bestMode, cuGeom.depth);
         }
     }
-    else if (mightNotSplit)
+    else if ((m_param->bEnableIntra64x64 || cuGeom.log2CUSize != MAX_LOG2_CU_SIZE) && mightNotSplit)
     {
         md.pred[PRED_INTRA].cu.initSubCU(parentCTU, cuGeom, qp);
         checkIntra(md.pred[PRED_INTRA], cuGeom, SIZE_2Nx2N);
