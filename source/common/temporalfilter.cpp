@@ -495,7 +495,7 @@ void TemporalFilter::init(const x265_param* param)
     m_blockVarStride = m_sourceWidth / varBlockSize;
     m_blockVariance = X265_MALLOC(double, m_blockVarStride * (m_sourceHeight / varBlockSize));
 
-    /* mvs is indexed per 8x8 luma block; noise and error also per 4x4 chroma block in
+    /* mvs is indexed per 8x8 luma block; error also per 4x4 chroma block in
      * bilateralFilterCore, which needs a larger grid for 4:2:2 and 4:4:4 */
     m_blockGridStride = m_sourceWidth / 8;
     m_blockGridRows = m_sourceHeight / 8;
@@ -522,7 +522,6 @@ int TemporalFilter::createRefPicInfo(TemporalFilterRefPicInfo* refFrame)
     CHECKED_MALLOC_ZERO(refFrame->mvs2, MV, numBlocks16);
     refFrame->mvsStride2 = m_sourceWidth / 16;
 
-    CHECKED_MALLOC_ZERO(refFrame->noise, int, numBlocks);
     CHECKED_MALLOC_ZERO(refFrame->error, int, numBlocks);
 
     refFrame->slicetype = X265_TYPE_AUTO;
@@ -541,7 +540,6 @@ void TemporalFilter::resetRefPicInfo(TemporalFilterRefPicInfo* refFrame)
     memset(refFrame->mvs1, 0, sizeof(MV) * numBlocks16);
     memset(refFrame->mvs2, 0, sizeof(MV) * numBlocks16);
     memset(refFrame->mvs, 0, sizeof(MV) * numBlocks);
-    memset(refFrame->noise, 0, sizeof(int) * numBlocks);
     memset(refFrame->error, 0, sizeof(int) * numBlocks);
 }
 
@@ -659,6 +657,9 @@ void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo*
                 const pixel* srcPel = srcPelPlane + by * srcStride + bx;
 
                 // Step 1: noise computation via SIMD primitive
+                /* kept per block, not in a frame-wide grid: for 4:2:2 and 4:4:4 the chroma
+                 * blocks of one row job land on grid rows another job uses for luma */
+                int noise[MCSTF_MAX_REFS];
                 double minError = DBL_MAX;
                 for (int i = 0; i < numRefs; i++)
                 {
@@ -675,8 +676,7 @@ void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo*
 
                     const int cntV = blkSize * blkSize;
                     const int cntD = 2 * cntV - blkSize - blkSize;
-                    refPicInfo->noise[(by / blkSize) * refPicInfo->mvsStride + (bx / blkSize)] =
-                        (int)round((15.0 * cntD / cntV * iVariance + 5.0) / (iDiffsum + 5.0));
+                    noise[i] = (int)round((15.0 * cntD / cntV * iVariance + 5.0) / (iDiffsum + 5.0));
                     minError = X265_MIN(minError,
                         (double)refPicInfo->error[(by / blkSize) * refPicInfo->mvsStride + (bx / blkSize)]);
                 }
@@ -688,11 +688,10 @@ void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo*
                 {
                     TemporalFilterRefPicInfo* refPicInfo = &m_mcstfRefList[i];
                     const int error = refPicInfo->error[(by / blkSize) * refPicInfo->mvsStride + (bx / blkSize)];
-                    const int noise = refPicInfo->noise[(by / blkSize) * refPicInfo->mvsStride + (bx / blkSize)];
                     const int index = X265_MIN(3, std::abs(refPicInfo->origOffset) - 1);
                     double ww = 1, sw = 1;
-                    ww *= (noise < 25) ? 1 : 1.2;
-                    sw *= (noise < 25) ? 1.3 : 0.8;
+                    ww *= (noise[i] < 25) ? 1 : 1.2;
+                    sw *= (noise[i] < 25) ? 1.3 : 0.8;
                     ww *= (error < 50) ? 1.2 : ((error > 100) ? 0.8 : 1);
                     sw *= (error < 50) ? 1.3 : 1;
                     ww *= ((minError + 1) / (error + 1));
@@ -1023,8 +1022,6 @@ void TemporalFilter::destroyRefPicInfo(TemporalFilterRefPicInfo* curFrame)
             X265_FREE(curFrame->mvs1);
         if (curFrame->mvs2)
             X265_FREE(curFrame->mvs2);
-        if (curFrame->noise)
-            X265_FREE(curFrame->noise);
         if (curFrame->error)
             X265_FREE(curFrame->error);
     }

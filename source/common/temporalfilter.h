@@ -180,7 +180,6 @@ namespace X265_NS {
         uint32_t   mvsStride1;
         uint32_t   mvsStride2;
         int*       error;
-        int*       noise;
         int        poc;
         pixel*     lowres;
         pixel*     lowerRes;
@@ -228,7 +227,7 @@ namespace X265_NS {
         double*  m_blockVariance;   /* source block variances shared by the per-reference ME jobs */
         uint32_t m_blockVarStride;
 
-        /* the block grid of mvs, noise and error: 8x8 luma blocks, or the 4x4 chroma blocks of
+        /* the block grid of mvs and error: 8x8 luma blocks, or the 4x4 chroma blocks of
          * the bilateral filter, whichever plane has more */
         uint32_t m_blockGridStride;
         uint32_t m_blockGridRows;
