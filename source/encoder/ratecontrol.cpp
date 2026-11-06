@@ -1661,7 +1661,10 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     }
     else // CQP
     {
-        if (m_sliceType == B_SLICE && IS_REFERENCED(curFrame))
+        if (m_sliceType == B_SLICE && m_param->bBPyramid)
+            /* the anchors' QP plus the offset of the B-pyramid layer, as in CRF and ABR */
+            m_qp = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qpConstant[P_SLICE] + bFrameQpOffset(curFrame, rce->bPyramidMaxLayer) + 0.5));
+        else if (m_sliceType == B_SLICE && IS_REFERENCED(curFrame))
             m_qp = (m_qpConstant[B_SLICE] + m_qpConstant[P_SLICE]) / 2;
         else
             m_qp = m_qpConstant[m_sliceType];
@@ -1699,32 +1702,6 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
             if (rce->poc == 0)
                 m_lastQScaleFor[P_SLICE] = m_lastQScaleFor[m_sliceType] * fabs(m_param->rc.ipFactor);
             rce->frameSizePlanned = predictSize(&m_pred[m_predType], m_qp, (double)m_currentSatd);
-        }
-    }
-    else if (!m_isAbr && !m_2pass)
-    {
-        bool userRatios = fabs(m_param->rc.ipFactor - 1.4f) > 1e-4f ||
-                          fabs(m_param->rc.pbFactor - 1.3f) > 1e-4f;
-        /* the HM QP offset model follows the B-pyramid layers; without the pyramid CQP keeps
-         * the --ipratio/--pbratio constants above */
-        if (!m_bRcReConfig && !getZone() && !userRatios && m_param->bBPyramid)
-        {
-            static const int    qpOffset[5]      = { 1, 1, 4, 5, 6 };
-            static const double qpOffsetScale[5] = { 0, 0.2061, 0.2286, 0.2333, 0.3 };
-            static const double qpOffsetOff[5]   = { 0, -4.8848, -5.7476, -5.9, -7.1444 };
-
-            int layer = X265_MIN(curFrame->m_bPyramidLayer, 4);
-            if (m_sliceType == I_SLICE)
-                m_qp = m_param->rc.qp - 3;
-            else
-            {
-                m_qp = m_param->rc.qp + qpOffset[layer];
-                double dqpOffset = m_qp * qpOffsetScale[layer] + qpOffsetOff[layer] + 0.5;
-                int modelOffset = (int)floor(x265_clip3(0.0, 3.0, dqpOffset));
-                m_qp += modelOffset;
-            }
-            m_qp = x265_clip3(m_param->rc.qpMin, m_param->rc.qpMax, m_qp);
-            rce->qpaRc = curEncData.m_avgQpRc = curEncData.m_avgQpAq = m_qp;
         }
     }
     m_framesDone++;
