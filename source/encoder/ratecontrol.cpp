@@ -833,9 +833,11 @@ bool RateControl::init(const SPS& sps)
             /* Depth needed to resync scales with the B-pyramid's reorder distance, which
             * is bounded by --bframes; one slot was only ever enough for a single-level
             * pyramid. Always allocate slot 0; allocate the rest only for pass-2 B-pyramid
-            * replay, where the resync loop below can actually need them. */
+            * replay, where the resync loop below can actually need them. File mode seeks
+            * straight to each frame's record at any B-pyramid depth, so it needs only
+            * slot 0; only the shared memory resync uses the extra slots. */
             int allocDepth = 1;
-            if (m_param->bBPyramid && m_param->rc.bStatRead)
+            if (m_param->bBPyramid && m_param->rc.bStatRead && X265_SHARE_MODE_SHAREDMEM == m_param->rc.dataShareMode)
                 allocDepth = x265_clip3(1, X265_BFRAME_MAX + 2, m_param->bframes + 2);
             m_cuTreeStats.qpBufDepth = allocDepth;
 
