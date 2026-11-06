@@ -2947,8 +2947,37 @@ void Lookahead::setDurationsToLowres(Frame *frame)
     frame->m_lowres.cpbDurationSecs = durationSecs;
 }
 
+struct BPyramidPlan
+{
+    int  b, p0, p1;
+    int  layer;
+    bool bRef;
+};
+
+/* The B frames between anchors frames[p0] and frames[p1] of a hierarchical B-pyramid in the
+ * coding order of pushBPyramidRange(), with their pyramid layer and the references
+ * compCostHierarchicalBref() costs them from: placeHierarchicalBref() puts a B-ref at
+ * (p0 + p1) / 2 of every run of more than 2 B frames */
+static void bPyramidCodingOrder(int p0, int p1, bool bP0Avail, int layer, BPyramidPlan* plan, int& count)
+{
+    if (p1 - p0 > 3)
+    {
+        int mid = (p0 + p1) / 2;
+        plan[count++] = { mid, bP0Avail ? p0 : mid, p1, layer, true };
+        bPyramidCodingOrder(p0, mid, bP0Avail, layer + 1, plan, count);
+        bPyramidCodingOrder(mid, p1, true, layer + 1, plan, count);
+    }
+    else
+    {
+        for (int b = p0 + 1; b < p1; b++)
+            plan[count++] = { b, bP0Avail ? p0 : b, p1, layer, false };
+    }
+}
+
 void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
 {
+    /* the hierarchical B-pyramid (used unless temporal sub-layers define the mini-GOP) */
+    const bool bHierarchical = m_param->bBPyramid && m_param->bEnableTemporalSubLayers <= 2;
     int prevNonB = 0, curNonB = 1, idx = 0;
     while (curNonB < numFrames && IS_X265_TYPE_B(frames[curNonB]->sliceType))
         curNonB++;
@@ -2984,6 +3013,48 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
         }
 
         /* Handle the B-frames: coded order */
+        if (bHierarchical)
+        {
+            /* the B-refs, references, coding order and QPs the pyramid is encoded with */
+            BPyramidPlan plan[X265_LOOKAHEAD_MAX + 1];
+            int count = 0;
+            bPyramidCodingOrder(prevNonB, curNonB, frames[curNonB]->sliceType != X265_TYPE_IDR, 1, plan, count);
+            const int maxLayer = x265_clip3(1, 5, bPyramidMaxLayer(curNonB - prevNonB));
+            for (int k = 0; k < count; k++, idx++)
+            {
+                const BPyramidPlan& cur = plan[k];
+                const int64_t satdCost = vbvFrameCost(frames, cur.p0, cur.p1, cur.b);
+                const int type = cur.bRef ? X265_TYPE_BREF : X265_TYPE_B;
+                const double bQpCoef = bPyramidQpCoef(maxLayer, cur.layer);
+                frames[nextNonB]->plannedSatd[idx] = satdCost;
+                frames[nextNonB]->plannedType[idx] = type;
+                frames[nextNonB]->plannedBQpCoef[idx] = bQpCoef;
+                frames[nextNonB]->plannedCpbDuration[idx] = frames[cur.b]->cpbDurationSecs;
+
+                /* Save the cost in each B frame of the current miniGop coded before this one */
+                for (int j = nextB; j < miniGopEnd; j++)
+                {
+                    if (curNonB == miniGopEnd)
+                    {
+                        bool bCodedBefore = false;
+                        for (int c = 0; c < k && !bCodedBefore; c++)
+                            bCodedBefore = plan[c].b == j;
+                        if (!bCodedBefore)
+                            continue;
+                    }
+                    frames[j]->plannedSatd[frames[j]->indB] = satdCost;
+                    frames[j]->plannedType[frames[j]->indB] = type;
+                    frames[j]->plannedBQpCoef[frames[j]->indB] = bQpCoef;
+                    frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[cur.b]->cpbDurationSecs;
+                }
+            }
+            prevNonB = curNonB;
+            curNonB++;
+            while (curNonB <= numFrames && IS_X265_TYPE_B(frames[curNonB]->sliceType))
+                curNonB++;
+            continue;
+        }
+
         if (m_param->bBPyramid && curNonB - prevNonB > 1)
             nextBRef = (prevNonB + curNonB + 1) / 2;
 
@@ -3005,8 +3076,9 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             }
             else
                 satdCost = vbvFrameCost(frames, prevNonB, curNonB, i);
-            /* the QP rate control will give this B frame: its layer in pushBPyramidRange()'s
-             * pyramid over the mini-GOP (frames[i] is list index i - prevNonB - 1) */
+            /* the QP rate control will give this B frame; with temporal sub-layers its layer
+             * is approximated by pushBPyramidRange()'s pyramid over the mini-GOP (frames[i]
+             * is list index i - prevNonB - 1) */
             const int span = curNonB - prevNonB;
             const double bQpCoef = m_param->bBPyramid
                 ? bPyramidQpCoef(x265_clip3(1, 5, bPyramidMaxLayer(span)), bPyramidLayerAt(0, span, i - prevNonB - 1))
