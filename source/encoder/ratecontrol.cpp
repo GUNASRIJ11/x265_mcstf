@@ -368,6 +368,7 @@ RateControl::RateControl(x265_param& p, Encoder *top)
 
     for (int i = 0; i < X265_BFRAME_MAX + 2; i++)
         m_cuTreeStats.qpBuffer[i] = NULL;
+    m_cuTreeStats.qpBufDepth = 0;
 }
 
 bool RateControl::initCUTreeSharedMem()
@@ -1932,7 +1933,7 @@ bool RateControl::cuTreeReadFor2Pass(Frame* frame)
                 do
                 {
                     m_cuTreeStats.qpBufPos++;
-                    if (!m_cutreeShrMem)
+                    if (!m_cutreeShrMem || m_cuTreeStats.qpBufPos >= m_cuTreeStats.qpBufDepth)
                         goto fail;
 
                     CUTreeSharedDataItem shrItem;
