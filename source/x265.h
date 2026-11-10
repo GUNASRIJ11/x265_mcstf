@@ -2430,6 +2430,12 @@ typedef struct x265_param
      * bits its B frames are expected to take at their layer QPs. Off, the pyramid is as
      * deep as the mini-GOP allows. Experimental. Default disabled */
     int      bBPyramidAdaptDepth;
+
+    /* Scales the QP offsets of the hierarchical B-pyramid layers over their anchors (their
+     * pbratio exponents), in every rate control mode: 0 codes the B frames at the anchor
+     * QP, 1 keeps the offsets derived from --pbratio, above 1 makes them steeper. Range
+     * 0 to 2. Default 1.0 */
+    double   bPyramidQpScale;
 } x265_param;
 
 /* x265_param_alloc:

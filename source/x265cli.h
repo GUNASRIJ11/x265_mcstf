@@ -162,6 +162,7 @@ static const struct option long_options[] =
     { "b-pyramid",            no_argument, NULL, 0 },
     { "no-b-pyramid-adapt-depth", no_argument, NULL, 0 },
     { "b-pyramid-adapt-depth", no_argument, NULL, 0 },
+    { "bpyramid-qp-scale", required_argument, NULL, 0 },
     { "ref",            required_argument, NULL, 0 },
     { "limit-refs",     required_argument, NULL, 0 },
     { "no-limit-modes",       no_argument, NULL, 0 },

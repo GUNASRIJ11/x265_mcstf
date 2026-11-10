@@ -1695,6 +1695,19 @@ Slice decision options
 	depth. Not used with :option:`--temporal-layers` greater than 2.
 	Experimental. Default disabled
 
+.. option:: --bpyramid-qp-scale <float>
+
+	Scale the QP offsets of the hierarchical B-pyramid layers over their
+	anchors in every rate control mode. The offsets come from
+	:option:`--pbratio`: the deepest layer of a mini-GOP sits
+	2 * 6 * log2(pbratio) above the anchors and each shallower layer a quarter
+	of that less; this value multiplies all of them. 0 codes the B frames at
+	the anchor QP, values between 0 and 1 flatten the pyramid, values above 1
+	make it steeper, and the B frames never get a lower QP than their anchors
+	while :option:`--pbratio` is at least 1. Rate control's bit estimates for
+	B frames (2-pass planning, VBV lookahead) use the same scaled offsets.
+	Has no effect with :option:`--no-b-pyramid`. Range 0 to 2. Default 1.0
+
 .. option:: --force-flush <integer>
 
 	Force the encoder to flush frames. Default is 0.
