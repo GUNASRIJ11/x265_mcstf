@@ -1647,11 +1647,11 @@ SplitData Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom&
                 skipModes = (m_param->bEnableEarlySkip || m_refineLevel == 2)
                 && md.bestMode && md.bestMode->cu.isSkipped(0); // TODO: sa8d threshold per depth
 
-            /* At rd 4 the skip decision only compared the best merge candidate with and
-             * without residual. At high B-frame QPs most residuals quantize to zero, so a
-             * poor merge prediction still wins it; keep the early-out only if 2Nx2N motion
+            /* At rd 3 and 4 the skip decision only compared the best merge candidate with
+             * and without residual. At high B-frame QPs most residuals quantize to zero, so
+             * a poor merge prediction still wins it; keep the early-out only if 2Nx2N motion
              * search cannot find a cheaper prediction (checked in step 3). */
-            bVerifyEarlySkip = skipModes && m_param->bEnableEarlySkip && m_refineLevel != 2 && m_param->rdLevel >= 4;
+            bVerifyEarlySkip = skipModes && m_param->bEnableEarlySkip && m_refineLevel != 2 && m_param->rdLevel >= 3;
         }
         if (md.bestMode && m_param->recursionSkipMode && !bCtuInfoCheck && !(m_param->bAnalysisType == AVC_INFO && m_param->analysisLoadReuseLevel == 7 && (m_modeFlag[0] || m_modeFlag[1])))
         {
