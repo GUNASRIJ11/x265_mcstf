@@ -2464,8 +2464,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                      * are. With a deep B-pyramid it is therefore dominated by B QPs,
                      * which sit well above the P level - anchoring the I frame to it
                      * lands the I frame above its neighbouring P frames even after
-                     * ipFactor. m_avgPFrameQp is maintained P-only. */
-                    if (m_avgPFrameQp > 0)
+                     * ipFactor. m_avgPFrameQp is maintained P-only. Without the B-pyramid the
+                     * B frames are not offset by layer, so keep the cumulative anchor there. */
+                    if (m_param->bBPyramid && m_avgPFrameQp > 0)
                         q = x265_qp2qScale(m_avgPFrameQp);
                     else
                         q = x265_qp2qScale(m_accumPQp / m_accumPNorm);
