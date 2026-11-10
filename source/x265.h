@@ -2426,6 +2426,11 @@ typedef struct x265_param
     int      framePacking;
 
     int      bEnableIntra64x64;
+
+    /* Let b-adapt 2 choose the depth of each mini-GOP's hierarchical B-pyramid, by the
+     * bits its B frames are expected to take at their layer QPs. Off, the pyramid is as
+     * deep as the mini-GOP allows. Experimental. Default disabled */
+    int      bBPyramidAdaptDepth;
 } x265_param;
 
 /* x265_param_alloc:

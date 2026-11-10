@@ -198,6 +198,7 @@ void x265_param_default(x265_param* param)
     param->lookaheadDepth = 20;
     param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
     param->bBPyramid = 1;
+    param->bBPyramidAdaptDepth = 0;
     param->scenecutThreshold = 40; /* Magic number pulled in from x264 */
     param->bHistBasedSceneCut = 0;
     param->lookaheadSlices = 8;
@@ -1354,6 +1355,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         if (0) ;
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
         OPT("intra-64x64") p->bEnableIntra64x64 = atobool(value);
+        OPT("b-pyramid-adapt-depth") p->bBPyramidAdaptDepth = atobool(value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
         OPT("analyze-src-pics") p->bSourceReferenceEstimation = atobool(value);
@@ -2241,6 +2243,7 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bIntraInBFrames, "b-intra");
     TOOLOPT(param->bEnableFastIntra, "fast-intra");
     TOOLOPT(param->bEnableIntra64x64, "intra-64x64");
+    TOOLOPT(param->bBPyramidAdaptDepth, "b-pyramid-adapt-depth");
     TOOLOPT(param->bEnableStrongIntraSmoothing, "strong-intra-smoothing");
     TOOLVAL(param->lookaheadSlices, "lslices=%d");
     TOOLVAL(param->lookaheadThreads, "lthreads=%d")
@@ -2408,6 +2411,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
 
     BOOL(p->bEnableFastIntra, "fast-intra");
     BOOL(p->bEnableIntra64x64, "intra-64x64");
+    BOOL(p->bBPyramidAdaptDepth, "b-pyramid-adapt-depth");
     BOOL(p->bEnableTSkipFast, "tskip-fast");
     BOOL(p->bCULossless, "cu-lossless");
     BOOL(p->bIntraInBFrames, "b-intra");
@@ -2893,6 +2897,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->edgeVarThreshold = src->edgeVarThreshold;
     dst->bEnableFastIntra = src->bEnableFastIntra;
     dst->bEnableIntra64x64 = src->bEnableIntra64x64;
+    dst->bBPyramidAdaptDepth = src->bBPyramidAdaptDepth;
     dst->bEnableTSkipFast = src->bEnableTSkipFast;
     dst->bCULossless = src->bCULossless;
     dst->bIntraInBFrames = src->bIntraInBFrames;

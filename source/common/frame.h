@@ -165,6 +165,7 @@ public:
     /*Frame's temporal layer info*/
     uint8_t                m_tempLayer;      // TemporalId signalled in the bitstream (--temporal-layers)
     uint8_t                m_bPyramidLayer;  // hierarchical B-pyramid level, 0 for I/P; never signalled
+    uint8_t                m_bPyramidMaxLayer; // deepest level of the frame's mini-GOP pyramid, 0 if not set
     int8_t                 m_gopId;
     bool                   m_sameLayerRefPic;
 
