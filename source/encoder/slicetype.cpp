@@ -3035,7 +3035,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                 const BPyramidPlan& cur = plan[k];
                 const int64_t satdCost = vbvFrameCost(frames, cur.p0, cur.p1, cur.b);
                 const int type = cur.bRef ? X265_TYPE_BREF : X265_TYPE_B;
-                const double bQpCoef = bPyramidQpCoef(maxLayer, cur.layer);
+                const double bQpCoef = bPyramidQpCoef(maxLayer, cur.layer, m_param->bPyramidQpScale);
                 frames[nextNonB]->plannedSatd[idx] = satdCost;
                 frames[nextNonB]->plannedType[idx] = type;
                 frames[nextNonB]->plannedBQpCoef[idx] = bQpCoef;
@@ -3091,7 +3091,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
              * is list index i - prevNonB - 1) */
             const int span = curNonB - prevNonB;
             const double bQpCoef = m_param->bBPyramid
-                ? bPyramidQpCoef(x265_clip3(1, 5, bPyramidMaxLayer(span)), bPyramidLayerAt(0, span, i - prevNonB - 1))
+                ? bPyramidQpCoef(x265_clip3(1, 5, bPyramidMaxLayer(span)), bPyramidLayerAt(0, span, i - prevNonB - 1), m_param->bPyramidQpScale)
                 : 1.0;
             frames[nextNonB]->plannedSatd[idx] = satdCost;
             frames[nextNonB]->plannedType[idx] = type;
@@ -3867,7 +3867,7 @@ void Lookahead::slicetypePathCostBPyramid(Lowres **frames, int cur_p, int next_p
 {
     CostEstimateGroup estGroup(*this, frames);
     const double pbFactor = m_param->rc.pbFactor > 0 ? m_param->rc.pbFactor : 1.0;
-    const double layerBits = pow(pbFactor, -bPyramidQpCoef(maxLayer, layer));
+    const double layerBits = pow(pbFactor, -bPyramidQpCoef(maxLayer, layer, m_param->bPyramidQpScale));
 
     if (next_p - cur_p <= 3 || depth <= 1)
     {
