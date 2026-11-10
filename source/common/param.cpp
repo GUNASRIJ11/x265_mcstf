@@ -198,6 +198,7 @@ void x265_param_default(x265_param* param)
     param->lookaheadDepth = 20;
     param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
     param->bBPyramid = 1;
+    param->bBPyramidAdaptDepth = 0;
     param->scenecutThreshold = 40; /* Magic number pulled in from x264 */
     param->bHistBasedSceneCut = 0;
     param->lookaheadSlices = 8;
@@ -1351,6 +1352,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     {
         if (0) ;
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
+        OPT("b-pyramid-adapt-depth") p->bBPyramidAdaptDepth = atobool(value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
         OPT("analyze-src-pics") p->bSourceReferenceEstimation = atobool(value);
@@ -2237,6 +2239,7 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bEnableConstrainedIntra, "cip");
     TOOLOPT(param->bIntraInBFrames, "b-intra");
     TOOLOPT(param->bEnableFastIntra, "fast-intra");
+    TOOLOPT(param->bBPyramidAdaptDepth, "b-pyramid-adapt-depth");
     TOOLOPT(param->bEnableStrongIntraSmoothing, "strong-intra-smoothing");
     TOOLVAL(param->lookaheadSlices, "lslices=%d");
     TOOLVAL(param->lookaheadThreads, "lthreads=%d")
@@ -2403,6 +2406,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
         s += snprintf(s, bufSize - (s - buf), " rskip-edge-threshold=%f", p->edgeVarThreshold);
 
     BOOL(p->bEnableFastIntra, "fast-intra");
+    BOOL(p->bBPyramidAdaptDepth, "b-pyramid-adapt-depth");
     BOOL(p->bEnableTSkipFast, "tskip-fast");
     BOOL(p->bCULossless, "cu-lossless");
     BOOL(p->bIntraInBFrames, "b-intra");
@@ -2887,6 +2891,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->recursionSkipMode = src->recursionSkipMode;
     dst->edgeVarThreshold = src->edgeVarThreshold;
     dst->bEnableFastIntra = src->bEnableFastIntra;
+    dst->bBPyramidAdaptDepth = src->bBPyramidAdaptDepth;
     dst->bEnableTSkipFast = src->bEnableTSkipFast;
     dst->bCULossless = src->bCULossless;
     dst->bIntraInBFrames = src->bIntraInBFrames;

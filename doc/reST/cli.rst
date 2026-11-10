@@ -1686,6 +1686,15 @@ Slice decision options
 
 	Use B-frames as references, when possible. Default enabled
 
+.. option:: --b-pyramid-adapt-depth, --no-b-pyramid-adapt-depth
+
+	With :option:`--b-adapt` 2 and :option:`--b-pyramid`, choose the depth of
+	the hierarchical B-pyramid of each mini-GOP, from no B-refs to as deep as
+	the mini-GOP allows, by the bits its B frames are expected to take at the
+	QP offsets of their layers. When disabled, every mini-GOP uses the full
+	depth. Not used with :option:`--temporal-layers` greater than 2.
+	Experimental. Default disabled
+
 .. option:: --force-flush <integer>
 
 	Force the encoder to flush frames. Default is 0.

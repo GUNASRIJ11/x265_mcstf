@@ -202,6 +202,7 @@ namespace X265_NS {
         H1("   --bframe-bias <integer>       Bias towards B frame decisions. Default %d\n", param->bFrameBias);
         H0("   --b-adapt <0..2>              0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling. Default %d\n", param->bFrameAdaptive);
         H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
+        H1("   --[no-]b-pyramid-adapt-depth  Let b-adapt 2 choose the B-pyramid depth of each mini-GOP. Experimental. Default %s\n", OPT(param->bBPyramidAdaptDepth));
         H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
         H1("                                 Format of each line: framenumber frametype QP\n");
         H1("                                 QP is optional (none lets x265 choose). Frametypes: I,i,K,P,B,b.\n");

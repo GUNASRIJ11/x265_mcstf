@@ -211,6 +211,7 @@ struct Lowres : public ReferencePlanes
     double    plannedBQpCoef[X265_LOOKAHEAD_MAX + 1]; /* B-pyramid exponent of pbratio, 0 for I/P, -1 unknown */
     int       indB;
     int       bframes;
+    int       bPyramidDepth;  /* anchor: B-pyramid depth b-adapt chose for the B frames before it, 0 if none */
 
     /* rate control / adaptive quant data */
     double*   qpAqOffset;      // AQ QP offset values for each 16x16 CU

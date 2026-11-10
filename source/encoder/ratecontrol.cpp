@@ -1409,7 +1409,10 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         m_lastAnchorPoc = curFrame->m_poc;
     }
     rce->bPyramidLayer = curFrame->m_bPyramidLayer;
-    rce->bPyramidMaxLayer = x265_clip3(1, 5, bPyramidMaxLayer(m_lastMiniGopLen));
+    /* the depth the mini-GOP's pyramid was built with (b-adapt may choose a shallower one than
+     * its length allows); paths that do not record it use the full depth of the length */
+    rce->bPyramidMaxLayer = x265_clip3(1, 5, curFrame->m_bPyramidMaxLayer ? (int)curFrame->m_bPyramidMaxLayer
+                                                                          : bPyramidMaxLayer(m_lastMiniGopLen));
     if (m_param->bEnableSBRC)
     {
         if (rce->poc == 0 || (m_framesDone % m_param->keyframeMax == 0))

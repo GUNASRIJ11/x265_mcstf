@@ -2424,6 +2424,12 @@ typedef struct x265_param
      * every picture. It is written on the base layer only and cannot be combined with
      * numViews > 1. Default -1 (disabled). */
     int      framePacking;
+
+
+    /* Let b-adapt 2 choose the depth of each mini-GOP's hierarchical B-pyramid, by the
+     * bits its B frames are expected to take at their layer QPs. Off, the pyramid is as
+     * deep as the mini-GOP allows. Experimental. Default disabled */
+    int      bBPyramidAdaptDepth;
 } x265_param;
 
 /* x265_param_alloc:
