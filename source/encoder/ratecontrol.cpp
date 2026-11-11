@@ -1629,9 +1629,10 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 {
                     m_isPatternPresent = true;
                 }
-                /* non-reference B frames (as in master) and the B-refs below the top of the pyramid;
-                 * a pyramid level test alone misses mini-GOPs of one or two B frames, which are all on level 1 */
-                else if (m_sliceType == B_SLICE && (!IS_REFERENCED(curFrame) || curFrame->m_bPyramidLayer > 1))
+                /* non-reference B frames only, as in master: the B-refs of the pyramid predict from
+                 * references at other distances, so even on static content their lowres SATD differs
+                 * from the non-reference B frames' and would restart the count at every mini-GOP */
+                else if (m_sliceType == B_SLICE && !IS_REFERENCED(curFrame))
                 {
                     if (m_currentSatd != m_lastBsliceSatdCost && !rce->bLastMiniGopBFrame)
                     {
