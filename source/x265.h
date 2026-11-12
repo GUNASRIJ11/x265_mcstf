@@ -1098,6 +1098,9 @@ typedef enum
  * allocation of x265_param instances, and x265_param_parse() to assign values
  * by name.  By never dereferencing param fields in your own code you can treat
  * x265_param as an opaque data structure */
+/* --bpyramid-qp-scale auto: the scale is derived from the encode's CRF or QP */
+#define X265_BPYRAMID_QP_SCALE_AUTO -1.0
+
 typedef struct x265_param
 {
     /* x265_param_default() will auto-detect this cpu capability bitmap.  it is
@@ -2435,7 +2438,9 @@ typedef struct x265_param
     /* Scales the QP offsets of the hierarchical B-pyramid layers over their anchors (their
      * pbratio exponents), in every rate control mode: 0 codes the B frames at the anchor
      * QP, 1 keeps the offsets derived from --pbratio, above 1 makes them steeper. Range
-     * 0 to 2. Default 1.0 */
+     * 0 to 2. A negative value (X265_BPYRAMID_QP_SCALE_AUTO) derives it from the encode's
+     * --crf or --qp: 1.0 at CRF 22 / QP 25 and below, falling linearly to 0.5 at CRF 37 /
+     * QP 40 and above, 1.0 in ABR. Default 1.0 */
     double   bPyramidQpScale;
 } x265_param;
 

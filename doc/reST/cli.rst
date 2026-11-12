@@ -1706,7 +1706,16 @@ Slice decision options
 	make it steeper, and the B frames never get a lower QP than their anchors
 	while :option:`--pbratio` is at least 1. Rate control's bit estimates for
 	B frames (2-pass planning, VBV lookahead) use the same scaled offsets.
-	Has no effect with :option:`--no-b-pyramid`. Range 0 to 2. Default 1.0
+	Has no effect with :option:`--no-b-pyramid`. Range 0 to 2, or auto.
+	Default 1.0
+
+	**auto** derives the scale from the encode's :option:`--crf` or
+	:option:`--qp`: the deeper layers of a long mini-GOP coded far above an
+	already high anchor QP lose their texture residual, so the higher the QP,
+	the flatter the pyramid. The scale is 1.0 up to CRF 22 (QP 25), falls
+	linearly to 0.5 at CRF 37 (QP 40) and stays 0.5 above. ABR and 2-pass
+	encodes, which have no QP to go by, keep 1.0. The scale is fixed when the
+	encoder opens: zones and reconfiguring the CRF do not change it.
 
 .. option:: --force-flush <integer>
 
