@@ -170,6 +170,8 @@ static const struct option long_options[] =
     { "weightp",              no_argument, NULL, 'w' },
     { "no-weightb",           no_argument, NULL, 0 },
     { "weightb",              no_argument, NULL, 0 },
+    { "wp-allref",            no_argument, NULL, 0 },
+    { "no-wp-allref",         no_argument, NULL, 0 },
     { "crf",            required_argument, NULL, 0 },
     { "crf-max",        required_argument, NULL, 0 },
     { "crf-min",        required_argument, NULL, 0 },

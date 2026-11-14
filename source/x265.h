@@ -1584,6 +1584,11 @@ typedef struct x265_param
 
     /* Enable weighted prediction in B slices. Default is disabled */
     int       bEnableWeightedBiPred;
+
+    /* Temporary, local-only gate for the PR2-WP all-reference weighted prediction.
+     * 0 (default) keeps the original single-reference behaviour, bit-exact with
+     * master. Toggled by --wp-allref; not intended for upstream. */
+    int       bEnableWeightedAllRef;
     /* Enable source pixels in motion estimation. Default is disabled */
     int       bSourceReferenceEstimation;
     /*== Loop Filters ==*/

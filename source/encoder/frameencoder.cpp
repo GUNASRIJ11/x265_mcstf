@@ -566,16 +566,31 @@ void FrameEncoder::compressFrame(int layer)
 #endif
         if (strlen(m_param->analysisLoad))
         {
-            int numPlanes = m_param->internalCsp != X265_CSP_I400 ? 3 : 1;
-            for (int list = 0; list < slice->isInterB() + 1; list++)
+            if (m_param->bEnableWeightedAllRef)
             {
-                for (int ref = 0; ref < m_param->maxNumReferences; ref++)
+                int numPlanes = m_param->internalCsp != X265_CSP_I400 ? 3 : 1;
+                for (int list = 0; list < slice->isInterB() + 1; list++)
                 {
-                    for (int plane = 0; plane < numPlanes; plane++)
+                    for (int ref = 0; ref < m_param->maxNumReferences; ref++)
                     {
-                        if (ref < slice->m_numRefIdx[list])
-                            slice->m_weightPredTable[list][ref][plane] = *reuseWP;
-                        reuseWP++;
+                        for (int plane = 0; plane < numPlanes; plane++)
+                        {
+                            if (ref < slice->m_numRefIdx[list])
+                                slice->m_weightPredTable[list][ref][plane] = *reuseWP;
+                            reuseWP++;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (int list = 0; list < slice->isInterB() + 1; list++)
+                {
+                    for (int plane = 0; plane < (m_param->internalCsp != X265_CSP_I400 ? 3 : 1); plane++)
+                    {
+                        for (int ref = 1; ref < slice->m_numRefIdx[list]; ref++)
+                            SET_WEIGHT(slice->m_weightPredTable[list][ref][plane], false, 1 << reuseWP->log2WeightDenom, reuseWP->log2WeightDenom, 0);
+                        slice->m_weightPredTable[list][0][plane] = *(reuseWP++);
                     }
                 }
             }
@@ -609,19 +624,27 @@ void FrameEncoder::compressFrame(int layer)
         }
         if (strlen(m_param->analysisSave) && (bUseWeightP || bUseWeightB))
         {
-            int numPlanes = m_param->internalCsp != X265_CSP_I400 ? 3 : 1;
-            for (int ref = 0; ref < m_param->maxNumReferences; ref++)
-                for (int i = 0; i < numPlanes; i++)
-                {
-                    if (ref < slice->m_numRefIdx[l])
-                        *(reuseWP++) = slice->m_weightPredTable[l][ref][i];
-                    else
+            if (m_param->bEnableWeightedAllRef)
+            {
+                int numPlanes = m_param->internalCsp != X265_CSP_I400 ? 3 : 1;
+                for (int ref = 0; ref < m_param->maxNumReferences; ref++)
+                    for (int i = 0; i < numPlanes; i++)
                     {
-                        WeightParam wpDisabled;
-                        SET_WEIGHT(wpDisabled, false, 1, 0, 0);
-                        *(reuseWP++) = wpDisabled;
+                        if (ref < slice->m_numRefIdx[l])
+                            *(reuseWP++) = slice->m_weightPredTable[l][ref][i];
+                        else
+                        {
+                            WeightParam wpDisabled;
+                            SET_WEIGHT(wpDisabled, false, 1, 0, 0);
+                            *(reuseWP++) = wpDisabled;
+                        }
                     }
-                }
+            }
+            else
+            {
+                for (int i = 0; i < (m_param->internalCsp != X265_CSP_I400 ? 3 : 1); i++)
+                    *(reuseWP++) = slice->m_weightPredTable[l][0][i];
+            }
         }
 
     }
@@ -632,7 +655,7 @@ void FrameEncoder::compressFrame(int layer)
      * refer to pps_id 0 (WP flags cleared), weighted slices refer to pps_id 1 */
     slice->m_ppsId = -1;
     slice->m_bWPPPS = true;
-    if ((m_param->bEnableWeightedPred || m_param->bEnableWeightedBiPred) && m_param->numLayers == 1)
+    if ((m_param->bEnableWeightedPred || m_param->bEnableWeightedBiPred) && m_param->numLayers == 1 && m_param->bEnableWeightedAllRef)
     {
         bool bAnyWeight = false;
         if (bUseWeightP || bUseWeightB)
