@@ -1682,13 +1682,21 @@ Slice decision options
 	more likely x265 is to use B frames. Can be any value between -90
 	and 100 and is clipped to that range. Default 0
 
-.. option:: --b-pyramid, --no-b-pyramid
+.. option:: --b-pyramid <integer>
 
-	Use B-frames as references, when possible. Default enabled
+	Use B-frames as references, when possible. Default 2
+
+	0. No B frame is used as a reference
+	1. The middle B frame of each mini-GOP of more than 2 B frames is a
+	   reference for the other B frames of the mini-GOP
+	2. The B frames of each mini-GOP form a hierarchical pyramid of B-refs,
+	   each layer at its own QP offset (:option:`--bpyramid-qp-scale`)
+
+	**Values:** 0, 1, 2. ``--no-b-pyramid`` is the same as 0.
 
 .. option:: --b-pyramid-adapt-depth, --no-b-pyramid-adapt-depth
 
-	With :option:`--b-adapt` 2 and :option:`--b-pyramid`, choose the depth of
+	With :option:`--b-adapt` 2 and :option:`--b-pyramid` 2, choose the depth of
 	the hierarchical B-pyramid of each mini-GOP, from no B-refs to as deep as
 	the mini-GOP allows, by the bits its B frames are expected to take at the
 	QP offsets of their layers. When disabled, every mini-GOP uses the full
@@ -1706,7 +1714,7 @@ Slice decision options
 	make it steeper, and the B frames never get a lower QP than their anchors
 	while :option:`--pbratio` is at least 1. Rate control's bit estimates for
 	B frames (2-pass planning, VBV lookahead) use the same scaled offsets.
-	Has no effect with :option:`--no-b-pyramid`. Range 0 to 2, or auto.
+	Only used with :option:`--b-pyramid` 2. Range 0 to 2, or auto.
 	Default 1.0
 
 	**auto** derives the scale from the encode's :option:`--crf` or

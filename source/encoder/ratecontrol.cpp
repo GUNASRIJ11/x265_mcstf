@@ -607,6 +607,13 @@ bool RateControl::init(const SPS& sps)
                     CMP_OPT_FIRST_PASS("weightp", m_param->bEnableWeightedPred);
                     CMP_OPT_FIRST_PASS("bframes", m_param->bframes);
                     CMP_OPT_FIRST_PASS("b-pyramid", m_param->bBPyramid);
+                    /* the param string writes --b-pyramid 1 as "b-pyramid", which the check above
+                     * accepts for 2 as well */
+                    if ((m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL) != !!strstr(opts, "b-pyramid=2"))
+                    {
+                        x265_log(m_param, X265_LOG_ERROR, "different b-pyramid setting than first pass\n");
+                        return false;
+                    }
                     CMP_OPT_FIRST_PASS("open-gop", m_param->bOpenGOP);
                     CMP_OPT_FIRST_PASS(" keyint", m_param->keyframeMax);
                     CMP_OPT_FIRST_PASS("scenecut", m_param->scenecutThreshold);
@@ -759,7 +766,11 @@ bool RateControl::init(const SPS& sps)
                 X265_FREE(statsBuf);
                 m_durationDone = totalDuration;
 
-                if (m_param->rc.cuTree && X265_SHARE_MODE_FILE == m_param->rc.dataShareMode)
+                /* the 1st pass writes a CU-tree record for each referenced frame in encode order;
+                 * with the hierarchical B-pyramid index them so the 2nd pass can read the record
+                 * of each frame directly */
+                if (m_param->rc.cuTree && X265_SHARE_MODE_FILE == m_param->rc.dataShareMode &&
+                    m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
                 {
                     m_cuTreeRecordIdx = X265_MALLOC(int, m_numEntries);
                     if (!m_cuTreeRecordIdx)
@@ -841,10 +852,16 @@ bool RateControl::init(const SPS& sps)
             * pyramid. Always allocate slot 0; allocate the rest only for pass-2 B-pyramid
             * replay, where the resync loop below can actually need them. File mode seeks
             * straight to each frame's record at any B-pyramid depth, so it needs only
-            * slot 0; only the shared memory resync uses the extra slots. */
+            * slot 0; only the shared memory resync uses the extra slots. --b-pyramid 1 reads
+            * the records in order in both modes and keeps the one B-ref it reorders past. */
             int allocDepth = 1;
-            if (m_param->bBPyramid && m_param->rc.bStatRead && X265_SHARE_MODE_SHAREDMEM == m_param->rc.dataShareMode)
-                allocDepth = x265_clip3(1, X265_BFRAME_MAX + 2, m_param->bframes + 2);
+            if (m_param->bBPyramid && m_param->rc.bStatRead)
+            {
+                if (m_param->bBPyramid != X265_B_PYRAMID_HIERARCHICAL)
+                    allocDepth = 2;
+                else if (X265_SHARE_MODE_SHAREDMEM == m_param->rc.dataShareMode)
+                    allocDepth = x265_clip3(1, X265_BFRAME_MAX + 2, m_param->bframes + 2);
+            }
             m_cuTreeStats.qpBufDepth = allocDepth;
 
             uint32_t bufBytes = (m_param->rc.qgSize == 8 ? m_ncu * 4 : m_ncu) * sizeof(uint16_t);
@@ -1668,7 +1685,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     }
     else // CQP
     {
-        if (m_sliceType == B_SLICE && m_param->bBPyramid)
+        if (m_sliceType == B_SLICE && m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
             /* the anchors' QP plus the offset of the B-pyramid layer, as in CRF and ABR */
             m_qp = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qpConstant[P_SLICE] + bFrameQpOffset(curFrame, rce->bPyramidMaxLayer) + 0.5));
         else if (m_sliceType == B_SLICE && IS_REFERENCED(curFrame))
@@ -1761,7 +1778,7 @@ double RateControl::getDiffLimitedQScale(RateControlEntry *rce, double q)
         if (m_param->rc.pbFactor > 0)
             q = lastNonBqScale;
         /* with the B-pyramid every layer, B-refs included, sits its layer's offset above the anchors */
-        if (m_param->bBPyramid && rce->bPyramidMaxLayer)
+        if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && rce->bPyramidMaxLayer)
             q *= bFrameQscaleRatio(rce);
         else if (!rce->keptAsRef)
             q *= fabs(m_param->rc.pbFactor);
@@ -1886,7 +1903,7 @@ bool RateControl::cuTreeReadFor2Pass(Frame* frame)
     {
         uint8_t type = 0;
 
-        if (X265_SHARE_MODE_FILE == m_param->rc.dataShareMode)
+        if (X265_SHARE_MODE_FILE == m_param->rc.dataShareMode && m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
         {
             /* Pass 1 wrote fixed-size records in ENCODE order; we are called in POC order.
              * For anything deeper than a single-level B-pyramid those two orders differ by
@@ -1927,20 +1944,33 @@ bool RateControl::cuTreeReadFor2Pass(Frame* frame)
             for (int i = 0; i < ncu; i++)
                 frame->m_lowres.invQscaleFactor[i] = x265_exp2fix8(frame->m_lowres.qpCuTreeOffset[i]);
         }
-        else // X265_SHARE_MODE_SHAREDMEM: stream is not seekable, keep the sequential resync
+        else // shared memory (not seekable) or --b-pyramid 0/1: keep the sequential resync
         {
             if (m_cuTreeStats.qpBufPos < 0)
             {
                 do
                 {
                     m_cuTreeStats.qpBufPos++;
-                    if (!m_cutreeShrMem || m_cuTreeStats.qpBufPos >= m_cuTreeStats.qpBufDepth)
+                    if (m_cuTreeStats.qpBufPos >= m_cuTreeStats.qpBufDepth)
                         goto fail;
 
-                    CUTreeSharedDataItem shrItem;
-                    shrItem.type = &type;
-                    shrItem.stats = m_cuTreeStats.qpBuffer[m_cuTreeStats.qpBufPos];
-                    m_cutreeShrMem->readNext(&shrItem, ReadSharedCUTreeData);
+                    if (X265_SHARE_MODE_FILE == m_param->rc.dataShareMode)
+                    {
+                        if (!fread(&type, 1, 1, m_cutreeStatFileIn))
+                            goto fail;
+                        if (fread(m_cuTreeStats.qpBuffer[m_cuTreeStats.qpBufPos], sizeof(uint16_t), ncu, m_cutreeStatFileIn) != (size_t)ncu)
+                            goto fail;
+                    }
+                    else // X265_SHARE_MODE_SHAREDMEM == m_param->rc.dataShareMode
+                    {
+                        if (!m_cutreeShrMem)
+                            goto fail;
+
+                        CUTreeSharedDataItem shrItem;
+                        shrItem.type = &type;
+                        shrItem.stats = m_cuTreeStats.qpBuffer[m_cuTreeStats.qpBufPos];
+                        m_cutreeShrMem->readNext(&shrItem, ReadSharedCUTreeData);
+                    }
 
                     if (type != sliceTypeActual && m_cuTreeStats.qpBufPos == 1)
                     {
@@ -2043,7 +2073,7 @@ static double bPyramidQpOffset(double pbOffset, double scale, int maxLayer, int 
  * pbOffset as without the hierarchical pyramid (pbOffset / 2 for a B-ref) */
 double RateControl::bFrameQpOffset(const Frame* frame, int maxLayer) const
 {
-    if (m_param->bBPyramid)
+    if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
         return bPyramidQpOffset(m_pbOffset, m_param->bPyramidQpScale, maxLayer, frame->m_bPyramidLayer);
     return IS_REFERENCED(frame) ? m_pbOffset / 2 : m_pbOffset;
 }
@@ -2052,7 +2082,7 @@ double RateControl::bFrameQpOffset(const Frame* frame, int maxLayer) const
  * rateEstimateQscale(): by pyramid layer with the B-pyramid, otherwise pbratio */
 double RateControl::bFrameQscaleRatio(const RateControlEntry* rce) const
 {
-    if (m_param->bBPyramid && rce->bPyramidMaxLayer)
+    if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && rce->bPyramidMaxLayer)
         return pow(fabs(m_param->rc.pbFactor), bPyramidQpCoef(rce->bPyramidMaxLayer, rce->bPyramidLayer, m_param->bPyramidQpScale));
     return fabs(m_param->rc.pbFactor);
 }
@@ -2401,7 +2431,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                     double ipOffset = (curFrame->m_lowres.bScenecut ? m_ipOffset : m_ipOffset / 2.0);
                     /* only B-refs get here; with the B-pyramid they take their layer's offset,
                      * which the non-reference B frames coded from them subtract again */
-                    double pbOffset = m_param->bBPyramid ? bFrameQpOffset(curFrame, maxLayer) : m_pbOffset;
+                    double pbOffset = m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL ? bFrameQpOffset(curFrame, maxLayer) : m_pbOffset;
                     rfConstant = (rce->sliceType == I_SLICE ? rfConstant - ipOffset :
                         (rce->sliceType == B_SLICE ? rfConstant + pbOffset : rfConstant));
                     double mbtree_offset = m_param->rc.cuTree ? (1.0 - m_param->rc.qCompress) * 13.5 : 0;
@@ -2467,7 +2497,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                      * lands the I frame above its neighbouring P frames even after
                      * ipFactor. m_avgPFrameQp is maintained P-only. Without the B-pyramid the
                      * B frames are not offset by layer, so keep the cumulative anchor there. */
-                    if (m_param->bBPyramid && m_avgPFrameQp > 0)
+                    if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && m_avgPFrameQp > 0)
                         q = x265_qp2qScale(m_avgPFrameQp);
                     else
                         q = x265_qp2qScale(m_accumPQp / m_accumPNorm);
@@ -2491,7 +2521,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                     q = x265_clip3(lqmin, lqmax, q);
                 }
             }
-            else if (m_sliceType == I_SLICE && m_param->rc.rateControlMode == X265_RC_CRF)
+            /* with the hierarchical B-pyramid the first I frame takes ipFactor with CU-tree (qcomp 1) too */
+            else if (m_param->rc.rateControlMode == X265_RC_CRF &&
+                     (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL ? m_sliceType == I_SLICE : m_qCompress != 1))
             {
                 if (m_qCompress != 1)
                     q = x265_qp2qScale(CRF_INIT_QP);
@@ -2785,7 +2817,7 @@ double RateControl::clipQscale(Frame* curFrame, RateControlEntry* rce, double q)
                 double targetFill;
                 double totalDuration = rce->cpbDuration * m_timebase;
                 /* with the B-pyramid each B frame sits its layer's offset above the anchors */
-                const bool bLayered = m_param->bBPyramid && rce->bPyramidMaxLayer;
+                const bool bLayered = m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && rce->bPyramidMaxLayer;
                 const double curBRatio = bLayered ? bFrameQscaleRatio(rce) : m_param->rc.pbFactor;
                 frameQ[P_SLICE] = m_sliceType == I_SLICE ? q * m_param->rc.ipFactor : (m_sliceType == B_SLICE ? q / curBRatio : q);
                 frameQ[B_SLICE] = frameQ[P_SLICE] * m_param->rc.pbFactor;

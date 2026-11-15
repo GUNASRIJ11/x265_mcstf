@@ -391,11 +391,13 @@ void DPB::computeRPS(int curPoc, int tempId, bool isRAP, RPS * rps, unsigned int
             if (m_bTemporalSublayer)
                 /* temporal sub-layers: only pictures of the same or a lower sub-layer */
                 bKeep = iterPic->m_tempLayer <= tempId;
-            else
+            else if (iterPic->m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
                 /* hierarchical B-pyramid: B-refs keep the pictures of the same or a lower pyramid level,
                  * P frames keep the I/P frames, non-reference B frames keep all */
                 bKeep = ((iterPic->m_bPyramidLayer <= pyramidLayer) || (frametype == X265_TYPE_P && iterPic->m_lowres.sliceType <= X265_TYPE_P) || frametype == X265_TYPE_B) &&
                         (curPoc - iterPic->m_poc <= (int)X265_MAX(16, iterPic->m_param->bframes + 1));
+            else
+                bKeep = true;
             if (bKeep && ((m_lastIDR >= curPoc) || (m_lastIDR <= iterPic->m_poc)))
             {
 #if ENABLE_MULTIVIEW

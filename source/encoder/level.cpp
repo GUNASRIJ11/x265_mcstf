@@ -386,12 +386,15 @@ bool enforceLevel(x265_param& param, VPS& vps)
     vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : 1;
     uint32_t numReorderPics = (param.bBPyramid && param.bframes > 1) ? 2 : !!param.bframes;
     /* the hierarchical B-pyramid (used unless temporal sub-layers define the mini-GOP) can need more */
-    if (param.bBPyramid && param.bEnableTemporalSubLayers <= 2)
+    if (X265_HIERARCHICAL_BPYRAMID(&param))
         numReorderPics = X265_MAX(numReorderPics, hierarchicalReorderPics(param.bframes));
     for (uint32_t i = 0; i < vps.maxTempSubLayers; i++)
     {
-        /* a higher sub-layer never has fewer reorder pictures than a lower one */
-        vps.numReorderPics[i] = (i == 0) ? numReorderPics : X265_MAX(i, numReorderPics);
+        /* with --b-pyramid 2 a higher sub-layer never has fewer reorder pictures than a lower one */
+        if (param.bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+            vps.numReorderPics[i] = (i == 0) ? numReorderPics : X265_MAX(i, numReorderPics);
+        else
+            vps.numReorderPics[i] = (i == 0) ? numReorderPics : i;
         vps.maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(vps.numReorderPics[i] + 2, (uint32_t)param.maxNumReferences) + 1) + !!param.bEnableSCC;
     }
 

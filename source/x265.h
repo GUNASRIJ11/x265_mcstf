@@ -592,6 +592,10 @@ typedef enum
 #define X265_B_ADAPT_FAST       1
 #define X265_B_ADAPT_TRELLIS    2
 
+#define X265_B_PYRAMID_NONE          0
+#define X265_B_PYRAMID_NORMAL        1
+#define X265_B_PYRAMID_HIERARCHICAL  2
+
 #define X265_REF_LIMIT_DEPTH    1
 #define X265_REF_LIMIT_CU       2
 
@@ -1368,11 +1372,13 @@ typedef struct x265_param
      * With b-adapt 2 (trellis) a viterbi B path selection is performed */
     int       bFrameAdaptive;
 
-    /* When enabled, the encoder will use the B frame in the middle of each
-     * mini-GOP larger than 2 B frames as a motion reference for the surrounding
-     * B frames.  This improves compression efficiency for a small performance
-     * penalty.  Referenced B frames are treated somewhere between a B and a P
-     * frame by rate control.  Default is enabled. */
+    /* B-pyramid mode. X265_B_PYRAMID_NONE (0): no B frame is used as a reference.
+     * X265_B_PYRAMID_NORMAL (1): the encoder will use the B frame in the middle of
+     * each mini-GOP larger than 2 B frames as a motion reference for the surrounding
+     * B frames.  Referenced B frames are treated somewhere between a B and a P frame
+     * by rate control.  X265_B_PYRAMID_HIERARCHICAL (2): the B frames of each mini-GOP
+     * form a hierarchical pyramid of B-refs, each layer at its own QP offset.
+     * Default 2 */
     int       bBPyramid;
 
     /* A value which is added to the cost estimate of B frames in the lookahead.

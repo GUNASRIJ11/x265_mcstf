@@ -4441,7 +4441,7 @@ void Encoder::configure(x265_param *p)
     if (p->bPyramidQpScale < 0)
     {
         double scale = 1.0;
-        if (p->bBPyramid)
+        if (p->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
         {
             if (p->rc.rateControlMode == X265_RC_CRF)
                 scale = 1.0 - (p->rc.rfConstant - 22.0) / 30.0;
