@@ -1707,9 +1707,10 @@ Slice decision options
 
 	Scale the QP offsets of the hierarchical B-pyramid layers over their
 	anchors in every rate control mode. The offsets come from
-	:option:`--pbratio`: the deepest layer of a mini-GOP sits
-	2 * 6 * log2(pbratio) above the anchors and each shallower layer a quarter
-	of that less; this value multiplies all of them. 0 codes the B frames at
+	:option:`--pbratio`: layer 1 of a mini-GOP sits 0.5 * 6 * log2(pbratio)
+	above the anchors and each deeper layer that much more, up to
+	2 * 6 * log2(pbratio) at layer 4 and below, however deep the mini-GOP's
+	pyramid is; this value multiplies all of them. 0 codes the B frames at
 	the anchor QP, values between 0 and 1 flatten the pyramid, values above 1
 	make it steeper, and the B frames never get a lower QP than their anchors
 	while :option:`--pbratio` is at least 1. Rate control's bit estimates for

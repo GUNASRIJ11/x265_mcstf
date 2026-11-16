@@ -2885,7 +2885,8 @@ void Lookahead::slicetypeDecide()
         {
             pushBPyramidRange(list, 0, bframes + 1, pts, idx, codedFrameOrderedIndex, m_outputQueue, 1);
 
-            /* the depth the pyramid was built with, which rate control scales the layer offsets to */
+            /* the depth the pyramid was built with; rate control uses it to tell pyramid frames
+             * from older 2-pass stats without one, the layer offsets do not depend on it */
             uint8_t maxLayer = 1;
             for (int i = 0; i < bframes; i++)
                 maxLayer = X265_MAX(maxLayer, list[i]->m_bPyramidLayer);
