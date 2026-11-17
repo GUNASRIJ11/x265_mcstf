@@ -719,10 +719,8 @@ void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo*
 //  Splits the frame into 64-row blocks, dispatches jobs to the threadpool via BilateralFilterGroup, then returns.
 void TemporalFilter::bilateralFilter(Frame* curFrame, TemporalFilterRefPicInfo* mcstfRefList, PicYuv** compensatedPics, ThreadPool* pool)
 {
-    const int numRef       = curFrame->m_mcstf->m_numRef;
-    const int rowSize      = 64;
-    const int frameHeight  = curFrame->m_fencPic->m_picHeight;
-    const int numBlockRows = (frameHeight + rowSize - 1) / rowSize;
+    const int numRef      = curFrame->m_mcstf->m_numRef;
+    const int frameHeight = curFrame->m_fencPic->m_picHeight;
 
     if (numRef == 0)
         return;
@@ -732,6 +730,16 @@ void TemporalFilter::bilateralFilter(Frame* curFrame, TemporalFilterRefPicInfo* 
         bilateralFilterCore(curFrame, mcstfRefList, compensatedPics, numRef, 0, 0);
         return;
     }
+
+    /* 64-row jobs; below 1080p, halve them (down to 16 rows) until every worker gets one.
+     * Any multiple of 8 keeps the 8x8 luma / 4x4 chroma blocks whole, so the output is unchanged. */
+    int rowSize = 64;
+    if (frameHeight < 1080)
+    {
+        while (rowSize > 16 && (frameHeight + rowSize - 1) / rowSize < pool->m_numWorkers)
+            rowSize >>= 1;
+    }
+    const int numBlockRows = (frameHeight + rowSize - 1) / rowSize;
 
     BilateralFilterGroup filterGroup(*this, pool);
 
