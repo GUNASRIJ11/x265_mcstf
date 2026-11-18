@@ -231,6 +231,7 @@ void x265_param_default(x265_param* param)
     param->bEnableStrongIntraSmoothing = 1;
     param->bEnableFastIntra = 0;
     param->bEnableIntra64x64 = 0;
+    param->bEnableIntraTuSplitRefine = 0;
     param->bEnableSplitRdSkip = 0;
 
     /* Inter Coding tools */
@@ -841,6 +842,7 @@ int x265_zone_param_parse(x265_param* p, const char* name, const char* value)
     OPT("ref") p->maxNumReferences = atoi(value);
     OPT("fast-intra") p->bEnableFastIntra = atobool(value);
     OPT("intra-64x64") p->bEnableIntra64x64 = atobool(value);
+    OPT("intra-tu-split-refine") p->bEnableIntraTuSplitRefine = atobool(value);
     OPT("early-skip") p->bEnableEarlySkip = atobool(value);
     OPT("rskip") p->recursionSkipMode = atoi(value);
     OPT("rskip-edge-threshold") p->edgeVarThreshold = atoi(value)/100.0f;
@@ -1356,6 +1358,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         if (0) ;
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
         OPT("intra-64x64") p->bEnableIntra64x64 = atobool(value);
+        OPT("intra-tu-split-refine") p->bEnableIntraTuSplitRefine = atobool(value);
         OPT("bpyramid-qp-scale") p->bPyramidQpScale = atof(value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
@@ -2249,6 +2252,7 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bIntraInBFrames, "b-intra");
     TOOLOPT(param->bEnableFastIntra, "fast-intra");
     TOOLOPT(param->bEnableIntra64x64, "intra-64x64");
+    TOOLOPT(param->bEnableIntraTuSplitRefine, "intra-tu-split-refine");
     if (param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && param->bPyramidQpScale != 1.0)
     {
         snprintf(tmp, sizeof(tmp), "bpyramid-qp-scale=%.2f", param->bPyramidQpScale);
@@ -2428,6 +2432,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
 
     BOOL(p->bEnableFastIntra, "fast-intra");
     BOOL(p->bEnableIntra64x64, "intra-64x64");
+    BOOL(p->bEnableIntraTuSplitRefine, "intra-tu-split-refine");
     BOOL(p->bEnableTSkipFast, "tskip-fast");
     BOOL(p->bCULossless, "cu-lossless");
     BOOL(p->bIntraInBFrames, "b-intra");
@@ -2915,6 +2920,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->edgeVarThreshold = src->edgeVarThreshold;
     dst->bEnableFastIntra = src->bEnableFastIntra;
     dst->bEnableIntra64x64 = src->bEnableIntra64x64;
+    dst->bEnableIntraTuSplitRefine = src->bEnableIntraTuSplitRefine;
     dst->bEnableTSkipFast = src->bEnableTSkipFast;
     dst->bCULossless = src->bCULossless;
     dst->bIntraInBFrames = src->bIntraInBFrames;

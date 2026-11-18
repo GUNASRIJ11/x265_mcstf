@@ -2449,6 +2449,11 @@ typedef struct x265_param
      * QP, 1 keeps the offsets derived from --pbratio, above 1 makes them steeper. Range
      * 0 to 2. Default 1.0 */
     double   bPyramidQpScale;
+
+    /* Code every intra mode shortlisted for full RD with the recursive TU split, so the
+     * luma intra mode and its TU split are chosen jointly. When disabled only the chosen
+     * mode is re-measured with TU splits. Slower. Default disabled */
+    int      bEnableIntraTuSplitRefine;
 } x265_param;
 
 /* x265_param_alloc:

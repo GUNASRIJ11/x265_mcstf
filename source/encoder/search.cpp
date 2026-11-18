@@ -1900,6 +1900,8 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
     sse_t totalDistortion = 0;
 
     int checkTransformSkip = m_slice->m_pps->bTransformSkipEnabled && !cu.m_tqBypass[0] && cu.m_partSize[0] != SIZE_2Nx2N;
+    /* --intra-tu-split-refine: code each RD candidate with TU splits, not only the chosen mode */
+    const bool bSplitCand = !!m_param->bEnableIntraTuSplitRefine;
 
     // loop over partitions
     for (uint32_t puIdx = 0; puIdx < numPU; puIdx++, absPartIdx += qNumParts)
@@ -2016,7 +2018,8 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
                 bUseCachedIntraData = log2TrSize <= 5;
             }
 
-            /* measure best candidates using simple RDO (no TU splits) */
+            /* measure best candidates using simple RDO (no TU splits), or with TU splits
+             * when --intra-tu-split-refine chooses the mode and its TU split jointly */
             bcost = MAX_INT64;
             for (int i = 0; i < maxCandCount; i++)
             {
@@ -2030,7 +2033,9 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
 
                 Cost icosts;
 
-				if (bUseCachedIntraData)
+                /* a candidate coded with TU splits overwrites the cached reference samples
+                 * with those of its sub-TUs, so restore them for the next candidate */
+                if (bSplitCand && bUseCachedIntraData)
                 {
                     IntraNeighbors cachedNeighbors;
                     initIntraNeighbors(cu, absPartIdx, initTuDepth, true, &cachedNeighbors);
@@ -2040,7 +2045,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
                 if (checkTransformSkip)
                     codeIntraLumaTSkip(intraMode, cuGeom, initTuDepth, absPartIdx, bUseCachedIntraData, icosts);
                 else
-                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, true, bUseCachedIntraData, NULL, icosts, depthRange);
+                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, bSplitCand, bUseCachedIntraData, NULL, icosts, depthRange);
 
                 if (icosts.rdcost < bcost)
                 {
@@ -2066,7 +2071,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
 
         Cost icosts;
 
-		 if (bUseCachedIntraData)
+        if (bSplitCand && bUseCachedIntraData)
         {
             IntraNeighbors cachedNeighbors;
             initIntraNeighbors(cu, absPartIdx, initTuDepth, true, &cachedNeighbors);
