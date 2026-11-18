@@ -2031,7 +2031,7 @@ bool Lookahead::generatemcstf(Frame * frameEnc, PicList refPic, int poclast)
 /* Pushes the B frames list[0..bframes-1] of a mini-GOP in the coding order of bPyramidPlan() and
  * stores the pyramid layer of each frame. The layer is used by rate control and reference selection
  * only, the signalled TemporalId (m_tempLayer) is not touched */
-static void pushBPyramid(Frame** list, int bframes, int64_t* pts, int& idx, int* codedFrameOrderedIndex,
+static void pushBPyramid(Frame** list, int bframes, const int64_t* pts, int& idx, int* codedFrameOrderedIndex,
     PicList& outputQueue)
 {
     BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
