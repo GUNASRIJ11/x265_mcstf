@@ -47,6 +47,11 @@
 
 using namespace X265_NS;
 
+static inline int brefMidIdx(int start, int end)
+{
+    return (start + end) / 2;
+}
+
 namespace {
 
 /* Compute variance to derive AC energy of each block */
@@ -1876,7 +1881,7 @@ void PreLookaheadGroup::processTasks(int workerThreadID)
 /* B-ref placement of the temporal sub-layer mini-GOPs (--temporal-layers > 2) */
 void Lookahead::placeBref(Frame** frames, int start, int end, int num, int *brefs)
 {
-    int avg = (start + end) / 2;
+    int avg = brefMidIdx(start, end);
     if (m_param->bEnableTemporalSubLayers < 2)
     {
         (*frames[avg]).m_lowres.sliceType = X265_TYPE_BREF;
@@ -2339,17 +2344,24 @@ void Lookahead::slicetypeDecide()
         m_inputLock.acquire();
         Frame* frameEnc = m_inputQueue.first();
         const int gopLen = bframes + 1;   /* B-frames + the anchor that ends this mini-GOP */
-        /* index of the top B-ref, the first node of bPyramidPlan(0, bframes + 1) with --b-pyramid 2
-         * and placeBref(list, 0, bframes, ...) with --b-pyramid 1, which run later */
+        /* a partial mini-GOP is split into sub-GOPs later with --temporal-layers > 2 */
+        const bool bSplitLater = m_param->bEnableTemporalSubLayers > 2 && bframes < m_param->bframes;
+        /* index of the top B-ref, placed later: the first node of bPyramidPlan(0, bframes + 1) with
+         * --b-pyramid 2, else that of placeBref(list, 0, bframes, ...) */
         int midIdx = -1;
-        if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && bframes > 2)
-            midIdx = (bframes + 1) / 2 - 1;
-        else if (m_param->bBPyramid == X265_B_PYRAMID_NORMAL && bframes > 1)
-            midIdx = bframes / 2;
-        if (midIdx >= 0 && m_param->bEnableTemporalSubLayers <= 2)
+        if (!bSplitLater)
         {
-            /* types from the first pass or an analysis file carry their B-refs, which may not include it */
-            const bool bTypesGiven = m_param->rc.bStatRead || strlen(m_param->analysisLoad);
+            if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && m_param->bEnableTemporalSubLayers <= 2)
+                midIdx = bframes > 2 ? (bframes + 1) / 2 - 1 : -1;
+            else if (m_param->bBPyramid && bframes > 1)
+                midIdx = brefMidIdx(0, bframes);
+        }
+        if (midIdx >= 0)
+        {
+            /* B-refs given by the user, the first pass or an analysis file are kept, so the placement
+             * does not run and they may not include it */
+            const bool bTypesGiven = brefs || (m_param->bEnableTemporalSubLayers <= 2 &&
+                                               (m_param->rc.bStatRead || strlen(m_param->analysisLoad)));
             if (bTypesGiven && list[midIdx]->m_lowres.sliceType != X265_TYPE_BREF)
                 midIdx = -1;
         }
