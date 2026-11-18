@@ -1102,8 +1102,6 @@ typedef enum
  * allocation of x265_param instances, and x265_param_parse() to assign values
  * by name.  By never dereferencing param fields in your own code you can treat
  * x265_param as an opaque data structure */
-/* --bpyramid-qp-scale auto: the scale is derived from the encode's CRF or QP */
-#define X265_BPYRAMID_QP_SCALE_AUTO -1.0
 
 typedef struct x265_param
 {
@@ -1375,10 +1373,12 @@ typedef struct x265_param
     /* B-pyramid mode. X265_B_PYRAMID_NONE (0): no B frame is used as a reference.
      * X265_B_PYRAMID_NORMAL (1): the encoder will use the B frame in the middle of
      * each mini-GOP larger than 2 B frames as a motion reference for the surrounding
-     * B frames.  Referenced B frames are treated somewhere between a B and a P frame
-     * by rate control.  X265_B_PYRAMID_HIERARCHICAL (2): the B frames of each mini-GOP
-     * form a hierarchical pyramid of B-refs, each layer at its own QP offset.
-     * Default 2 */
+     * B frames.  This improves compression efficiency for a small performance
+     * penalty.  Referenced B frames are treated somewhere between a B and a P
+     * frame by rate control.  X265_B_PYRAMID_HIERARCHICAL (2): the middle B frame
+     * of the mini-GOP is a B-ref from the two anchors, and each half is split the
+     * same way while it has more than two B frames; with --temporal-layers greater
+     * than 2 the same as 1.  Default 1 */
     int       bBPyramid;
 
     /* A value which is added to the cost estimate of B frames in the lookahead.
@@ -2436,17 +2436,18 @@ typedef struct x265_param
 
     int      bEnableIntra64x64;
 
-    /* Let b-adapt 2 choose the depth of each mini-GOP's hierarchical B-pyramid, by the
-     * bits its B frames are expected to take at their layer QPs. Off, the pyramid is as
-     * deep as the mini-GOP allows. Experimental. Default disabled */
-    int      bBPyramidAdaptDepth;
+    /* Write user data unregistered SEI payloads (x265_picture.userSEI or
+     * --nalu-file, payload type USER_DATA_UNREGISTERED) verbatim. When enabled,
+     * the first 16 bytes of each payload are the caller's uuid_iso_iec_11578,
+     * followed by user_data_payload_byte; payloads smaller than 16 bytes are
+     * rejected. When disabled, x265 writes its own UUID in front of the payload.
+     * Default 0 (disabled). */
+    int      bUserSEIRaw;
 
     /* Scales the QP offsets of the hierarchical B-pyramid layers over their anchors (their
      * pbratio exponents), in every rate control mode: 0 codes the B frames at the anchor
      * QP, 1 keeps the offsets derived from --pbratio, above 1 makes them steeper. Range
-     * 0 to 2. A negative value (X265_BPYRAMID_QP_SCALE_AUTO) derives it from the encode's
-     * --crf or --qp: 1.0 at CRF 22 / QP 25 and below, falling linearly to 0.5 at CRF 37 /
-     * QP 40 and above, 1.0 in ABR. Default 1.0 */
+     * 0 to 2. Default 1.0 */
     double   bPyramidQpScale;
 } x265_param;
 

@@ -77,7 +77,6 @@ Frame::Frame()
 
     m_tempLayer = 0;
     m_bPyramidLayer = 0;
-    m_bPyramidMaxLayer = 0;
     m_sameLayerRefPic = false;
 
     m_viewId = 0;

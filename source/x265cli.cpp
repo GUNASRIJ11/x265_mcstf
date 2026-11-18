@@ -178,7 +178,7 @@ namespace X265_NS {
         H0("\nSlice decision options:\n");
         H0("   --[no-]open-gop               Enable open-GOP, allows I slices to be non-IDR. Default %s\n", OPT(param->bOpenGOP));
         H0("   --cra-nal                     Force nal type to CRA to all frames except the first frame, works only with keyint 1. Default %s\n", OPT(param->craNal));
-        H0("-I/--keyint <integer>            Max IDR period in frames. -1 for infinite-gop. Default %d\n", param->keyframeMax);
+        H0("-I/--keyint <integer>            Max IDR period in clock ticks. -1 for infinite-gop. Default %d\n", param->keyframeMax);
         H0("-i/--min-keyint <integer>        Scenecuts closer together than this are coded as I, not IDR. Default: auto\n");
         H0("   --gop-lookahead <integer>     Extends gop boundary if a scenecut is found within this from keyint boundary. Default 0\n");
         H0("   --no-scenecut                 Disable adaptive I-frame decision\n");
@@ -203,8 +203,7 @@ namespace X265_NS {
         H1("   --bframe-bias <integer>       Bias towards B frame decisions. Default %d\n", param->bFrameBias);
         H0("   --b-adapt <0..2>              0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling. Default %d\n", param->bFrameAdaptive);
         H0("   --b-pyramid <0..2>            Use B-frames as references. 0 - none, 1 - normal, 2 - hierarchical. Default %d\n", param->bBPyramid);
-        H1("   --[no-]b-pyramid-adapt-depth  Let b-adapt 2 choose the B-pyramid depth of each mini-GOP. Experimental. Default %s\n", OPT(param->bBPyramidAdaptDepth));
-        H1("   --bpyramid-qp-scale <float>   Scale the QP offsets of the B-pyramid layers, 0 to 2 or auto (from --crf/--qp). Default %.2f\n", param->bPyramidQpScale);
+        H1("   --bpyramid-qp-scale <float>   Scale the QP offsets of the B-pyramid layers, 0 to 2. Default %.2f\n", param->bPyramidQpScale);
         H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
         H1("                                 Format of each line: framenumber frametype QP\n");
         H1("                                 QP is optional (none lets x265 choose). Frametypes: I,i,K,P,B,b.\n");
@@ -376,6 +375,7 @@ namespace X265_NS {
         H0("   --[no-]info                   Emit SEI identifying encoder and parameters. Default %s\n", OPT(param->bEmitInfoSEI));
         H0("   --[no-]hrd                    Enable HRD parameters signaling. Default %s\n", OPT(param->bEmitHRDSEI));
         H0("   --[no-]idr-recovery-sei       Emit recovery point infor SEI at each IDR frame \n");
+        H0("   --[no-]sei-udu-raw            Write user data unregistered SEI payloads verbatim (first 16 bytes are the caller's UUID). Default %s\n", OPT(param->bUserSEIRaw));
         H0("   --temporal-layers             Enable a temporal sublayer for unreferenced B frames. Default %s\n", OPT(param->bEnableTemporalSubLayers));
         H0("   --[no-]aud                    Emit access unit delimiters at the start of each access unit. Default %s\n", OPT(param->bEnableAccessUnitDelimiters));
         H0("   --[no-]eob                    Emit end of bitstream nal unit at the end of the bitstream. Default %s\n", OPT(param->bEnableEndOfBitstream));

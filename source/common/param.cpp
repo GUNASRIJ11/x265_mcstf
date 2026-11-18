@@ -197,8 +197,7 @@ void x265_param_default(x265_param* param)
     param->bframes = 4;
     param->lookaheadDepth = 20;
     param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
-    param->bBPyramid = X265_B_PYRAMID_HIERARCHICAL;
-    param->bBPyramidAdaptDepth = 0;
+    param->bBPyramid = 1;
     param->bPyramidQpScale = 1.0;
     param->scenecutThreshold = 40; /* Magic number pulled in from x264 */
     param->bHistBasedSceneCut = 0;
@@ -406,6 +405,7 @@ void x265_param_default(x265_param* param)
     param->bLowPassDct = 0;
     param->bAnalysisType = 0;
     param->bSingleSeiNal = 0;
+    param->bUserSEIRaw = 0;
 
     /* SEI messages */
     param->preferredTransferCharacteristics = -1;
@@ -1193,15 +1193,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("hash") p->decodedPictureHashSEI = atoi(value);
     OPT("aud") p->bEnableAccessUnitDelimiters = atobool(value);
     OPT("info") p->bEmitInfoSEI = atobool(value);
-    /* a mode, or the boolean of the earlier option: --no-b-pyramid ("false") is mode 0 and
-     * "true" the hierarchical B-pyramid it meant */
-    OPT("b-pyramid")
-    {
-        if (!strcmp(value, "true") || !strcmp(value, "false"))
-            p->bBPyramid = atobool(value) ? X265_B_PYRAMID_HIERARCHICAL : X265_B_PYRAMID_NONE;
-        else
-            p->bBPyramid = atoi(value);
-    }
+    OPT("b-pyramid") p->bBPyramid = atoi(value);
     OPT("hrd") p->bEmitHRDSEI = atobool(value);
     OPT2("ipratio", "ip-factor") p->rc.ipFactor = atof(value);
     OPT2("pbratio", "pb-factor") p->rc.pbFactor = atof(value);
@@ -1364,8 +1356,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         if (0) ;
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
         OPT("intra-64x64") p->bEnableIntra64x64 = atobool(value);
-        OPT("b-pyramid-adapt-depth") p->bBPyramidAdaptDepth = atobool(value);
-        OPT("bpyramid-qp-scale") p->bPyramidQpScale = !strcmp(value, "auto") ? X265_BPYRAMID_QP_SCALE_AUTO : atof(value);
+        OPT("bpyramid-qp-scale") p->bPyramidQpScale = atof(value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
         OPT("analyze-src-pics") p->bSourceReferenceEstimation = atobool(value);
@@ -1450,6 +1441,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("radl") p->radl = atoi(value);
         OPT("max-ausize-factor") p->maxAUSizeFactor = atof(value);
         OPT("dynamic-refine") p->bDynamicRefine = atobool(value);
+        OPT("sei-udu-raw") p->bUserSEIRaw = atobool(value);
         OPT("single-sei") p->bSingleSeiNal = atobool(value);
         OPT("atc-sei") p->preferredTransferCharacteristics = atoi(value);
         OPT("frame-packing") p->framePacking = atoi(value);
@@ -1938,8 +1930,8 @@ int x265_check_params(x265_param* param)
           "Target bitrate can not be less than zero");
     CHECK(param->rc.qCompress < 0.5 || param->rc.qCompress > 1.0,
           "qCompress must be between 0.5 and 1.0");
-    CHECK((param->bPyramidQpScale < 0 && param->bPyramidQpScale != X265_BPYRAMID_QP_SCALE_AUTO) || param->bPyramidQpScale > 2.0,
-          "bpyramid-qp-scale must be between 0 and 2, or auto");
+    CHECK(param->bPyramidQpScale < 0 || param->bPyramidQpScale > 2.0,
+          "bpyramid-qp-scale must be between 0 and 2");
     if (param->noiseReductionIntra)
         CHECK(0 > param->noiseReductionIntra || param->noiseReductionIntra > 2000, "Valid noise reduction range 0 - 2000");
     if (param->noiseReductionInter)
@@ -2257,7 +2249,6 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bIntraInBFrames, "b-intra");
     TOOLOPT(param->bEnableFastIntra, "fast-intra");
     TOOLOPT(param->bEnableIntra64x64, "intra-64x64");
-    TOOLOPT(param->bBPyramidAdaptDepth, "b-pyramid-adapt-depth");
     if (param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && param->bPyramidQpScale != 1.0)
     {
         snprintf(tmp, sizeof(tmp), "bpyramid-qp-scale=%.2f", param->bPyramidQpScale);
@@ -2373,7 +2364,10 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += snprintf(s, bufSize - (s - buf), " b-adapt=%d", p->bFrameAdaptive);
     /* 0 and 1 keep the boolean form of the earlier option */
     if (p->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+    {
         s += snprintf(s, bufSize - (s - buf), " b-pyramid=%d", p->bBPyramid);
+        s += snprintf(s, bufSize - (s - buf), " bpyramid-qp-scale=%.2f", p->bPyramidQpScale);
+    }
     else
         BOOL(p->bBPyramid, "b-pyramid");
     s += snprintf(s, bufSize - (s - buf), " bframe-bias=%d", p->bFrameBias);
@@ -2434,8 +2428,6 @@ char *x265_param2string(x265_param* p, int padx, int pady)
 
     BOOL(p->bEnableFastIntra, "fast-intra");
     BOOL(p->bEnableIntra64x64, "intra-64x64");
-    BOOL(p->bBPyramidAdaptDepth, "b-pyramid-adapt-depth");
-    s += snprintf(s, bufSize - (s - buf), " bpyramid-qp-scale=%.2f", p->bPyramidQpScale);
     BOOL(p->bEnableTSkipFast, "tskip-fast");
     BOOL(p->bCULossless, "cu-lossless");
     BOOL(p->bIntraInBFrames, "b-intra");
@@ -2563,6 +2555,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += snprintf(s, bufSize - (s - buf), " refine-analysis-type=%d", p->bAnalysisType);
     s += snprintf(s, bufSize - (s - buf), " copy-pic=%d", p->bCopyPicToFrame);
     s += snprintf(s, bufSize - (s - buf), " max-ausize-factor=%.1f", p->maxAUSizeFactor);
+    BOOL(p->bUserSEIRaw, "sei-udu-raw");
     BOOL(p->bDynamicRefine, "dynamic-refine");
     BOOL(p->bSingleSeiNal, "single-sei");
     BOOL(p->rc.hevcAq, "hevc-aq");
@@ -2866,6 +2859,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->bFrameAdaptive = src->bFrameAdaptive;
     dst->bFrameBias = src->bFrameBias;
     dst->bBPyramid = src->bBPyramid;
+    dst->bPyramidQpScale = src->bPyramidQpScale;
     dst->lookaheadDepth = src->lookaheadDepth;
     dst->lookaheadSlices = src->lookaheadSlices;
     dst->lookaheadThreads = src->lookaheadThreads;
@@ -2921,8 +2915,6 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->edgeVarThreshold = src->edgeVarThreshold;
     dst->bEnableFastIntra = src->bEnableFastIntra;
     dst->bEnableIntra64x64 = src->bEnableIntra64x64;
-    dst->bBPyramidAdaptDepth = src->bBPyramidAdaptDepth;
-    dst->bPyramidQpScale = src->bPyramidQpScale;
     dst->bEnableTSkipFast = src->bEnableTSkipFast;
     dst->bCULossless = src->bCULossless;
     dst->bIntraInBFrames = src->bIntraInBFrames;
@@ -3092,6 +3084,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->radl = src->radl;
     dst->selectiveSAO = src->selectiveSAO;
     dst->maxAUSizeFactor = src->maxAUSizeFactor;
+    dst->bUserSEIRaw = src->bUserSEIRaw;
     dst->bEmitIDRRecoverySEI = src->bEmitIDRRecoverySEI;
     dst->bDynamicRefine = src->bDynamicRefine;
     dst->bSingleSeiNal = src->bSingleSeiNal;

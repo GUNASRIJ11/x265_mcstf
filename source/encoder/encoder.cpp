@@ -38,6 +38,7 @@
 #include "frameencoder.h"
 #include "ratecontrol.h"
 #include "dpb.h"
+#include "level.h"
 #include "nal.h"
 #include "threadedme.h"
 #include "ratecontrol.h"
@@ -148,7 +149,7 @@ Encoder::Encoder()
     m_clockTickCount = 0;
     m_lastPirCpbDelay = 0;
     m_bframeDelayTime = 0;
-    m_prevReorderedPts[0] = m_prevReorderedPts[1] = 0;
+    memset(m_prevReorderedPts, 0, sizeof(m_prevReorderedPts));
     m_curEncoder = 0;
     m_numLumaWPFrames = 0;
     m_numChromaWPFrames = 0;
@@ -1719,7 +1720,6 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 inFrame[layer]->m_isInsideWindow = 0;
                 inFrame[layer]->m_tempLayer = 0;
                 inFrame[layer]->m_bPyramidLayer = 0;
-                inFrame[layer]->m_bPyramidMaxLayer = 0;
                 inFrame[layer]->m_sameLayerRefPic = 0;
 #if ENABLE_MULTIVIEW
                 inFrame[layer]->m_viewId = m_param->numViews > 1 ? layer : 0;
@@ -2339,7 +2339,6 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 frameEnc[layer]->m_lowres.bKeyframe = frameEnc[0]->m_lowres.bKeyframe;
                 frameEnc[layer]->m_tempLayer = frameEnc[0]->m_tempLayer;
                 frameEnc[layer]->m_bPyramidLayer = frameEnc[0]->m_bPyramidLayer;
-                frameEnc[layer]->m_bPyramidMaxLayer = frameEnc[0]->m_bPyramidMaxLayer;
             }
 #endif
 
@@ -2563,7 +2562,6 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     {
                         frameEnc[layer]->m_tempLayer = (int8_t)0;
                         frameEnc[layer]->m_bPyramidLayer = 0;
-                        frameEnc[layer]->m_bPyramidMaxLayer = 0;
                     }
                 }
             }
@@ -3564,7 +3562,7 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
     {
         SEIAlphaChannelInfo m_alpha;
         m_alpha.alpha_channel_cancel_flag = !m_param->numScalableLayers;
-        m_alpha.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+        m_alpha.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
     }
 #endif
 
@@ -3573,16 +3571,16 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
     if (m_param->numViews > 1)
     {
         SEIThreeDimensionalReferenceDisplaysInfo m_multiview_1;
-        m_multiview_1.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal, 0);
+        m_multiview_1.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
 
         SEIMultiviewSceneInfo m_multiview_2;
-        m_multiview_2.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal, 0);
+        m_multiview_2.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
 
         SEIMultiviewAcquisitionInfo m_multiview_3;
-        m_multiview_3.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal, 0);
+        m_multiview_3.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
 
         SEIMultiviewViewPosition m_multiview_4;
-        m_multiview_4.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal, 0);
+        m_multiview_4.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
     }
 #endif
 
@@ -3596,14 +3594,14 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
             SEIContentLightLevel cllsei;
             cllsei.max_content_light_level = m_param->maxCLL;
             cllsei.max_pic_average_light_level = m_param->maxFALL;
-            cllsei.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+            cllsei.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
         }
 
         if (strlen(m_param->masteringDisplayColorVolume))
         {
             SEIMasteringDisplayColorVolume mdsei;
             if (mdsei.parse(m_param->masteringDisplayColorVolume))
-                mdsei.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+                mdsei.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
             else
                 x265_log(m_param, X265_LOG_WARNING, "unable to parse mastering display color volume info\n");
         }
@@ -3627,7 +3625,7 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
                 SEIuserDataUnregistered idsei;
                 idsei.m_userData = (uint8_t*)buffer;
                 idsei.setSize((uint32_t)strlen(buffer));
-                idsei.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+                idsei.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
 
                 X265_FREE(buffer);
             }
@@ -3642,7 +3640,7 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
         SEIActiveParameterSets sei;
         sei.m_selfContainedCvsFlag = true;
         sei.m_noParamSetUpdateFlag = true;
-        sei.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+        sei.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
     }
 }
 
@@ -4433,25 +4431,10 @@ void Encoder::configure(x265_param *p)
     }
 
     m_bframeDelay = p->bframes ? (p->bBPyramid ? 2 : 1) : 0;
-
-    /* --bpyramid-qp-scale auto: the higher the encode's QP, the flatter the B-pyramid. Deep
-     * layers coded far above an already high anchor QP lose their texture residual, so the
-     * scale falls linearly from 1.0 at CRF 22 / QP 25 to 0.5 at CRF 37 / QP 40. ABR has no
-     * QP to go by and keeps 1.0 */
-    if (p->bPyramidQpScale < 0)
-    {
-        double scale = 1.0;
-        if (p->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
-        {
-            if (p->rc.rateControlMode == X265_RC_CRF)
-                scale = 1.0 - (p->rc.rfConstant - 22.0) / 30.0;
-            else if (p->rc.rateControlMode == X265_RC_CQP)
-                scale = 1.0 - (p->rc.qp - 25.0) / 30.0;
-            scale = x265_clip3(0.5, 1.0, scale);
-            x265_log(p, X265_LOG_INFO, "bpyramid-qp-scale auto: %.2f\n", scale);
-        }
-        p->bPyramidQpScale = scale;
-    }
+    /* the DTS delay must cover the deepest reorder, or DTS ends up after PTS: the hierarchical
+     * B-pyramid reorders more than 2 pictures from 7 B-frames on */
+    if (X265_HIERARCHICAL_BPYRAMID(p) && p->bframes > 1)
+        m_bframeDelay = X265_MAX(m_bframeDelay, (int)hierarchicalReorderPics(p->bframes));
 
     p->bFrameBias = X265_MIN(X265_MAX(-90, p->bFrameBias), 100);
     p->scenecutBias = (double)(p->scenecutBias / 100);

@@ -27,6 +27,7 @@
 #define X265_RATECONTROL_H
 
 #include "common.h"
+#include "bpyramid.h"
 #include "sei.h"
 #include "ringmem.h"
 #include "threading.h"
@@ -47,30 +48,6 @@ struct SPS;
 #define MIN_AMORTIZE_FRAME 10
 #define MIN_AMORTIZE_FRACTION 0.2
 #define CLIP_DURATION(f) x265_clip3(MIN_FRAME_DURATION, MAX_FRAME_DURATION, f)
-
-/* Deepest B-pyramid layer a mini-GOP of this length produces, matching
- * pushBPyramidRange()'s own recursion. A span of 7 tops out at layer 3; a span
- * of 2 or 3 never gets past layer 1 - which is exactly why an absolute
- * "tempLayer > 2" cutoff misjudges short mini-GOPs. */
-static inline int bPyramidMaxLayer(int span, int layer = 1)
-{
-    if (span <= 3)
-        return layer;
-    int mid = span / 2;
-    return X265_MAX(bPyramidMaxLayer(mid, layer + 1), bPyramidMaxLayer(span - mid, layer + 1));
-}
-
-/* Pyramid layer pushBPyramidRange() gives the B frame at list index idx of the
- * range [p0, p1), where list[p1 - 1] is the anchor closing the range */
-static inline int bPyramidLayerAt(int p0, int p1, int idx, int layer = 1)
-{
-    if (p1 - p0 <= 3)
-        return layer;
-    int mid = p0 + (p1 - p0) / 2;
-    if (idx == mid - 1)
-        return layer;
-    return idx < mid - 1 ? bPyramidLayerAt(p0, mid, idx, layer + 1) : bPyramidLayerAt(mid, p1, idx, layer + 1);
-}
 
 /* Exponent of --pbratio giving a B-pyramid layer's qscale relative to its anchors
  * (its QP offset is this times 6 * log2(pbratio)), anchored at the top of the pyramid:
@@ -204,8 +181,6 @@ public:
     int     m_predType;       /* Type of slice predictors to be used - depends on the slice type */
     double  m_ipOffset;
     double  m_pbOffset;
-    int     m_lastAnchorPoc;
-    int     m_lastMiniGopLen;
     int64_t m_bframeBits;
     int64_t m_currentSatd;
     int     m_qpConstant[3];
@@ -239,6 +214,10 @@ public:
     int64_t m_lastRemovedSatdCost;
     double  m_movingAvgSum;
     int     m_totalframesInSegment;
+
+    /* length of the current mini-GOP, from the POCs of its anchors, for the B-pyramid layer offsets */
+    int     m_lastAnchorPoc;
+    int     m_lastMiniGopLen;
 
     /* To detect a pattern of low detailed static frames in single pass ABR using satdcosts */
     int64_t m_lastBsliceSatdCost;
@@ -283,7 +262,7 @@ public:
     double  m_expectedBitsSum;   /* sum of qscale2bits after rceq, ratefactor, and overflow, only includes finished frames */
     int64_t m_predictedBits;
     int     *m_encOrder;
-    int     *m_cuTreeRecordIdx;
+    int     *m_cuTreeRecordIdx;  /* file mode: CU-tree record of each 1st pass entry, -1 for frames without one */
     RateControlEntry* m_rce2Pass;
     Encoder* m_top;
 
@@ -291,15 +270,11 @@ public:
 
     struct
     {
-        uint16_t *qpBuffer[X265_BFRAME_MAX + 2]; /* Global buffers for converting MB-tree quantizer data.
-                                                * Sized for the deepest B-pyramid reorder distance
-                                                * (X265_BFRAME_MAX == largest --bframes), not just
-                                                * one level -- a single level is not enough once
-                                                * --bframes/--temporal-layers builds a deeper hierarchy. */
-        int qpBufPos;    /* Current position in the stack (0 .. qpBufDepth - 1). */
-        int qpBufDepth;  /* Number of qpBuffer[] slots actually allocated this run, derived
-                        * from m_param->bframes -- how far the resync below is allowed
-                        * to search before it must give up. */
+        uint16_t *qpBuffer[X265_BFRAME_MAX + 2]; /* Global buffers for converting MB-tree quantizer data. */
+        int qpBufPos;    /* In order to handle pyramid reordering, QP buffer acts as a stack.
+                          * This value is the current position (0 .. qpBufDepth - 1). */
+        int qpBufDepth;  /* number of qpBuffer[] slots allocated: the reordering of the hierarchical
+                          * B-pyramid is bounded by --bframes */
     } m_cuTreeStats;
 
     RateControl(x265_param& p, Encoder *enc);
@@ -341,7 +316,7 @@ protected:
     int    m_residualCost;
     int    m_partialResidualCost;
 
-    x265_zone* getZone();
+    x265_zone* getZone(int frameNum);
     double getQScale(RateControlEntry *rce, double rateFactor);
     double rateEstimateQscale(Frame* pic, RateControlEntry *rce); // main logic for calculating QP based on ABR
     double tuneAbrQScaleFromFeedback(double qScale);

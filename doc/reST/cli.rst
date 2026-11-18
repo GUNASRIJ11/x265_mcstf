@@ -1684,47 +1684,31 @@ Slice decision options
 
 .. option:: --b-pyramid <integer>
 
-	Use B-frames as references, when possible. Default 2
+	Use B-frames as references, when possible. Default 1
 
 	0. No B frame is used as a reference
 	1. The middle B frame of each mini-GOP of more than 2 B frames is a
 	   reference for the other B frames of the mini-GOP
-	2. The B frames of each mini-GOP form a hierarchical pyramid of B-refs,
-	   each layer at its own QP offset (:option:`--bpyramid-qp-scale`)
+	2. Hierarchical B-pyramid: the middle B frame of a mini-GOP is a B-ref
+	   from the two anchors, and each half is split the same way while it
+	   has more than two B frames, so the B frames are predicted from nearer
+	   references. With :option:`--temporal-layers` greater than 2 the
+	   mini-GOP is defined by the temporal sub-layers, as with 1
 
-	**Values:** 0, 1, 2. ``--no-b-pyramid`` is the same as 0.
+	**Values:** 0, 1, 2. Earlier versions took no value: use 1 for
+	:option:`--b-pyramid` and 0 for the removed ``--no-b-pyramid``.
 
-.. option:: --b-pyramid-adapt-depth, --no-b-pyramid-adapt-depth
-
-	With :option:`--b-adapt` 2 and :option:`--b-pyramid` 2, choose the depth of
-	the hierarchical B-pyramid of each mini-GOP, from no B-refs to as deep as
-	the mini-GOP allows, by the bits its B frames are expected to take at the
-	QP offsets of their layers. When disabled, every mini-GOP uses the full
-	depth. Not used with :option:`--temporal-layers` greater than 2.
-	Experimental. Default disabled
+	With 2 the QP of a B frame comes from its layer in the pyramid instead of
+	from whether it is a reference: see :option:`--bpyramid-qp-scale`.
 
 .. option:: --bpyramid-qp-scale <float>
 
-	Scale the QP offsets of the hierarchical B-pyramid layers over their
-	anchors in every rate control mode. The offsets come from
-	:option:`--pbratio`: layer 1 of a mini-GOP sits 0.5 * 6 * log2(pbratio)
-	above the anchors and each deeper layer that much more, up to
-	2 * 6 * log2(pbratio) at layer 4 and below, however deep the mini-GOP's
-	pyramid is; this value multiplies all of them. 0 codes the B frames at
-	the anchor QP, values between 0 and 1 flatten the pyramid, values above 1
-	make it steeper, and the B frames never get a lower QP than their anchors
-	while :option:`--pbratio` is at least 1. Rate control's bit estimates for
-	B frames (2-pass planning, VBV lookahead) use the same scaled offsets.
-	Only used with :option:`--b-pyramid` 2. Range 0 to 2, or auto.
-	Default 1.0
-
-	**auto** derives the scale from the encode's :option:`--crf` or
-	:option:`--qp`: the deeper layers of a long mini-GOP coded far above an
-	already high anchor QP lose their texture residual, so the higher the QP,
-	the flatter the pyramid. The scale is 1.0 up to CRF 22 (QP 25), falls
-	linearly to 0.5 at CRF 37 (QP 40) and stays 0.5 above. ABR and 2-pass
-	encodes, which have no QP to go by, keep 1.0. The scale is fixed when the
-	encoder opens: zones and reconfiguring the CRF do not change it.
+	Scale the QP offsets of the B-pyramid layers over their anchors. A B frame
+	at layer L sits scale * min(2, 0.5 * L) * 6 * log2(:option:`--pbratio`) QP
+	above its anchors, so at scale 1 layer 1 matches a B-ref of
+	:option:`--b-pyramid` 1 and layer 2 a non-reference B frame. 0 codes all
+	B frames at the anchor QP; values below 1 flatten the pyramid, above 1
+	steepen it. Only used with :option:`--b-pyramid` 2. Range 0 to 2. Default 1.0
 
 .. option:: --force-flush <integer>
 
@@ -2043,6 +2027,11 @@ Quality, rate control and rate distortion options
 	the rate control modes. Some :option:`--tune` options may change the
 	default value. It is not typically manually specified. Default 1.3
 
+	With :option:`--b-pyramid` 2 the B frames get a QP offset per pyramid layer
+	derived from this ratio: 6 * log2(pbratio) / 2 for each layer, up to twice
+	the offset of a non-reference B frame, scaled by
+	:option:`--bpyramid-qp-scale`.
+
 .. option:: --qcomp <float>
 
 	qComp sets the quantizer curve compression factor. It weights the
@@ -2090,6 +2079,8 @@ Quality, rate control and rate distortion options
 
 	<start frame>,<end frame>,<option> where <option> is either q=<integer>
 	(force QP) or b=<float> (bitrate multiplier).
+	Frame number is in input order, starting from 0, both the start and end
+	numbers are inclusive.
 
 	If zones overlap, whichever comes later in the list takes precedence.
 	Default none
@@ -2606,6 +2597,16 @@ VUI fields must be manually specified.
 	Text file containing userSEI in POC order : <POC><space><PREFIX><space><NAL UNIT TYPE>/<SEI TYPE><space><SEI Payload>
 	Parse the input file specified and inserts SEI messages into the bitstream. 
 	Currently, we support only PREFIX SEI messages. This is an "application-only" feature.
+
+.. option:: --sei-udu-raw, --no-sei-udu-raw
+
+	Write user data unregistered SEI payloads (payload type 5, from
+	x265_picture.userSEI or :option:`--nalu-file`) verbatim. The first 16
+	bytes of each payload must be the caller's uuid_iso_iec_11578, followed
+	by the user data; payloads smaller than 16 bytes are skipped with an
+	error. When disabled, x265 writes its own UUID
+	(2CA2DE09-B517-47DB-BB55-A4FE7FC2FC4E) in front of each payload, so the
+	whole payload becomes user_data_payload_byte. Default disabled.
 
 .. option:: --atc-sei <integer>
 
